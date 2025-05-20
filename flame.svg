@@ -1,0 +1,1342 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="742" onload="init(evt)" viewBox="0 0 1200 742" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs >
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	.func_g:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	var details, searchbtn, matchedtxt, svg;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+	}
+
+	// mouse-over for info
+	function s(node) {		// show
+		info = g_to_text(node);
+		details.nodeValue = "Function: " + info;
+	}
+	function c() {			// clear
+		details.nodeValue = ' ';
+	}
+
+	// ctrl-F for search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+	})
+
+	// functions
+	function find_child(parent, name, attr) {
+		var children = parent.childNodes;
+		for (var i=0; i<children.length;i++) {
+			if (children[i].tagName == name)
+				return (attr != undefined) ? children[i].attributes[attr].value : children[i];
+		}
+		return;
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_"+attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_"+attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_"+attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes["width"].value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes["x"].value = parseFloat(r.attributes["x"].value) +3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2*12*0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		// Fit in full text width
+		if (/^ *$/.test(txt) || t.getSubStringLength(0, txt.length) < w)
+			return;
+
+		for (var x=txt.length-2; x>0; x--) {
+			if (t.getSubStringLength(0, x+2) <= w) {
+				t.textContent = txt.substring(0,x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = (parseFloat(e.attributes["x"].value) - x - 10) * ratio + 10;
+				if(e.tagName == "text") e.attributes["x"].value = find_child(e.parentNode, "rect", "x") + 3;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseFloat(e.attributes["width"].value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_child(c[i], x-10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = 10;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseInt(svg.width.baseVal.value) - (10*2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr["width"].value);
+		var xmin = parseFloat(attr["x"].value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr["y"].value);
+		var ratio = (svg.width.baseVal.value - 2*10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "1.0";
+
+		var el = document.getElementsByTagName("g");
+		for(var i=0;i<el.length;i++){
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a["x"].value);
+			var ew = parseFloat(a["width"].value);
+			// Is it an ancestor
+			if (0 == 0) {
+				var upstack = parseFloat(a["y"].value) > ymin;
+			} else {
+				var upstack = parseFloat(a["y"].value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.style["opacity"] = "0.5";
+					zoom_parent(e);
+					e.onclick = function(e){unzoom(); zoom(this);};
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.style["display"] = "none";
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.style["display"] = "none";
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					e.onclick = function(e){zoom(this);};
+					update_text(e);
+				}
+			}
+		}
+	}
+	function unzoom() {
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "0.0";
+
+		var el = document.getElementsByTagName("g");
+		for(i=0;i<el.length;i++) {
+			el[i].style["display"] = "block";
+			el[i].style["opacity"] = "1";
+			zoom_reset(el[i]);
+			update_text(el[i]);
+		}
+	}
+
+	// search
+	function reset_search() {
+		var el = document.getElementsByTagName("rect");
+		for (var i=0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)", "");
+			if (term != null) {
+				search(term)
+			}
+		} else {
+			reset_search();
+			searching = 0;
+			searchbtn.style["opacity"] = "0.1";
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.style["opacity"] = "0.0";
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		var re = new RegExp(term);
+		var el = document.getElementsByTagName("g");
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			if (e.attributes["class"].value != "func_g")
+				continue;
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (rect == null) {
+				// the rect might be wrapped in an anchor
+				// if nameattr href is being used
+				if (rect = find_child(e, "a")) {
+				    rect = find_child(r, "rect");
+				}
+			}
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes["width"].value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes["x"].value);
+				orig_save(rect, "fill");
+				rect.attributes["fill"].value =
+				    "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+
+		searchbtn.style["opacity"] = "1.0";
+		searchbtn.firstChild.nodeValue = "Reset Search"
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.style["opacity"] = "1.0";
+		pct = 100 * count / maxwidth;
+		if (pct == 100)
+			pct = "100"
+		else
+			pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+	function searchover(e) {
+		searchbtn.style["opacity"] = "1.0";
+	}
+	function searchout(e) {
+		if (searching) {
+			searchbtn.style["opacity"] = "1.0";
+		} else {
+			searchbtn.style["opacity"] = "0.1";
+		}
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="742.0" fill="url(#background)"  />
+<text text-anchor="middle" x="600.00" y="24" font-size="17" font-family="Verdana" fill="rgb(0,0,0)"  >Flame Graph</text>
+<text text-anchor="" x="10.00" y="725" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="details" > </text>
+<text text-anchor="" x="10.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="unzoom" onclick="unzoom()" style="opacity:0.0;cursor:pointer" >Reset Zoom</text>
+<text text-anchor="" x="1090.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="search" onmouseover="searchover()" onmouseout="searchout()" onclick="search_prompt()" style="opacity:0.1;cursor:pointer" >Search</text>
+<text text-anchor="" x="1090.00" y="725" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="matched" > </text>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>void std::allocator_traits&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::destroy&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; (2 samples, 0.35%)</title><rect x="1097.2" y="261" width="4.1" height="15.0" fill="rgb(233,96,46)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="271.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt;::allocate (2 samples, 0.35%)</title><rect x="86.3" y="485" width="4.2" height="15.0" fill="rgb(206,5,29)" rx="2" ry="2" />
+<text text-anchor="" x="89.33" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.get__anon_3281 (1 samples, 0.17%)</title><rect x="474.2" y="485" width="2.0" height="15.0" fill="rgb(241,40,20)" rx="2" ry="2" />
+<text text-anchor="" x="477.16" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="697.0" y="437" width="2.0" height="15.0" fill="rgb(244,49,10)" rx="2" ry="2" />
+<text text-anchor="" x="699.96" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::find (1 samples, 0.17%)</title><rect x="71.9" y="549" width="2.1" height="15.0" fill="rgb(241,89,18)" rx="2" ry="2" />
+<text text-anchor="" x="74.89" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.Gen56.next (5 samples, 0.87%)</title><rect x="1082.7" y="533" width="10.3" height="15.0" fill="rgb(209,209,27)" rx="2" ry="2" />
+<text text-anchor="" x="1085.73" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTS::get_action_distribution (519 samples, 90.73%)</title><rect x="30.6" y="597" width="1070.7" height="15.0" fill="rgb(240,139,6)" rx="2" ry="2" />
+<text text-anchor="" x="33.63" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >pkmndriver::Gen1::MCTS::get_action_distribution</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (2 samples, 0.35%)</title><rect x="610.3" y="437" width="4.1" height="15.0" fill="rgb(234,19,23)" rx="2" ry="2" />
+<text text-anchor="" x="613.31" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>void std::allocator_traits&lt;std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::construct&lt;std::pair&lt;unsigned char, unsigned char&gt;, unsigned char&amp;, unsigned char&amp;&gt; (1 samples, 0.17%)</title><rect x="67.8" y="517" width="2.0" height="15.0" fill="rgb(229,19,40)" rx="2" ry="2" />
+<text text-anchor="" x="70.76" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::~_Hashtable (2 samples, 0.35%)</title><rect x="1097.2" y="309" width="4.1" height="15.0" fill="rgb(246,136,23)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="319.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.get__anon_3281 (1 samples, 0.17%)</title><rect x="878.5" y="469" width="2.1" height="15.0" fill="rgb(232,222,25)" rx="2" ry="2" />
+<text text-anchor="" x="881.50" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.onEnd__anon_4796 (4 samples, 0.70%)</title><rect x="810.4" y="469" width="8.3" height="15.0" fill="rgb(241,0,45)" rx="2" ry="2" />
+<text text-anchor="" x="813.42" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>memcpy (38 samples, 6.64%)</title><rect x="969.3" y="485" width="78.4" height="15.0" fill="rgb(237,19,9)" rx="2" ry="2" />
+<text text-anchor="" x="972.27" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >memcpy</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>cfree (1 samples, 0.17%)</title><rect x="1097.2" y="37" width="2.0" height="15.0" fill="rgb(235,199,29)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="47.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.statusModify (4 samples, 0.70%)</title><rect x="843.4" y="469" width="8.3" height="15.0" fill="rgb(231,145,34)" rx="2" ry="2" />
+<text text-anchor="" x="846.43" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[libc.so.6] (562 samples, 98.25%)</title><rect x="30.6" y="629" width="1159.4" height="15.0" fill="rgb(219,122,6)" rx="2" ry="2" />
+<text text-anchor="" x="33.63" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >[libc.so.6]</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.Gen56.next (1 samples, 0.17%)</title><rect x="573.2" y="421" width="2.0" height="15.0" fill="rgb(248,150,48)" rx="2" ry="2" />
+<text text-anchor="" x="576.18" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[ld-linux-x86-64.so.2] (5 samples, 0.87%)</title><rect x="10.0" y="581" width="10.3" height="15.0" fill="rgb(254,72,20)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::allocate (1 samples, 0.17%)</title><rect x="69.8" y="501" width="2.1" height="15.0" fill="rgb(232,184,24)" rx="2" ry="2" />
+<text text-anchor="" x="72.83" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::~_Hashtable (2 samples, 0.35%)</title><rect x="1097.2" y="469" width="4.1" height="15.0" fill="rgb(237,39,20)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::~_Hashtable (1 samples, 0.17%)</title><rect x="1097.2" y="149" width="2.0" height="15.0" fill="rgb(223,41,18)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3 samples, 0.52%)</title><rect x="22.4" y="533" width="6.2" height="15.0" fill="rgb(229,159,43)" rx="2" ry="2" />
+<text text-anchor="" x="25.38" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unordered_map&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;, pkmndriver::Gen1::PairHash, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; &gt;::~unordered_map (1 samples, 0.17%)</title><rect x="1097.2" y="165" width="2.0" height="15.0" fill="rgb(212,22,34)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="26.5" y="469" width="2.1" height="15.0" fill="rgb(233,25,35)" rx="2" ry="2" />
+<text text-anchor="" x="29.50" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__uniq_ptr_data&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt;, true, true&gt;::operator= (2 samples, 0.35%)</title><rect x="1097.2" y="565" width="4.1" height="15.0" fill="rgb(240,25,12)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>malloc (3 samples, 0.52%)</title><rect x="49.2" y="533" width="6.2" height="15.0" fill="rgb(232,143,6)" rx="2" ry="2" />
+<text text-anchor="" x="52.20" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.handleResidual__anon_3905 (14 samples, 2.45%)</title><rect x="851.7" y="501" width="28.9" height="15.0" fill="rgb(218,37,18)" rx="2" ry="2" />
+<text text-anchor="" x="854.68" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >ge..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.get__anon_3281 (1 samples, 0.17%)</title><rect x="608.3" y="421" width="2.0" height="15.0" fill="rgb(244,161,49)" rx="2" ry="2" />
+<text text-anchor="" x="611.25" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.switchIn__anon_3279 (12 samples, 2.10%)</title><rect x="826.9" y="485" width="24.8" height="15.0" fill="rgb(206,98,29)" rx="2" ry="2" />
+<text text-anchor="" x="829.92" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >g..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTSNode::~MCTSNode (2 samples, 0.35%)</title><rect x="1097.2" y="501" width="4.1" height="15.0" fill="rgb(231,23,13)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unordered_map&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;, pkmndriver::Gen1::PairHash, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; &gt;::contains (1 samples, 0.17%)</title><rect x="71.9" y="565" width="2.1" height="15.0" fill="rgb(243,217,50)" rx="2" ry="2" />
+<text text-anchor="" x="74.89" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__new_allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;::deallocate (1 samples, 0.17%)</title><rect x="1099.2" y="85" width="2.1" height="15.0" fill="rgb(223,188,43)" rx="2" ry="2" />
+<text text-anchor="" x="1102.23" y="95.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[ld-linux-x86-64.so.2] (5 samples, 0.87%)</title><rect x="10.0" y="597" width="10.3" height="15.0" fill="rgb(212,20,49)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::size (1 samples, 0.17%)</title><rect x="1095.1" y="549" width="2.1" height="15.0" fill="rgb(219,59,31)" rx="2" ry="2" />
+<text text-anchor="" x="1098.10" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>memset (1 samples, 0.17%)</title><rect x="1187.9" y="421" width="2.1" height="15.0" fill="rgb(224,152,22)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.moveHit__anon_4073 (1 samples, 0.17%)</title><rect x="614.4" y="421" width="2.1" height="15.0" fill="rgb(253,136,25)" rx="2" ry="2" />
+<text text-anchor="" x="617.44" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmn_gen1_battle_update (366 samples, 63.99%)</title><rect x="323.6" y="565" width="755.0" height="15.0" fill="rgb(206,121,15)" rx="2" ry="2" />
+<text text-anchor="" x="326.57" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >pkmn_gen1_battle_update</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.endTurn__anon_4971 (3 samples, 0.52%)</title><rect x="43.0" y="517" width="6.2" height="15.0" fill="rgb(235,46,31)" rx="2" ry="2" />
+<text text-anchor="" x="46.01" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.endTurn__anon_4971 (81 samples, 14.16%)</title><rect x="880.6" y="517" width="167.1" height="15.0" fill="rgb(209,199,27)" rx="2" ry="2" />
+<text text-anchor="" x="883.56" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.mechanics.endTur..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[libc.so.6] (1 samples, 0.17%)</title><rect x="80.1" y="389" width="2.1" height="15.0" fill="rgb(236,227,4)" rx="2" ry="2" />
+<text text-anchor="" x="83.14" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::_M_deallocate_node (2 samples, 0.35%)</title><rect x="1097.2" y="437" width="4.1" height="15.0" fill="rgb(220,84,16)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>operator new (3 samples, 0.52%)</title><rect x="49.2" y="549" width="6.2" height="15.0" fill="rgb(217,104,30)" rx="2" ry="2" />
+<text text-anchor="" x="52.20" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_find_node (1 samples, 0.17%)</title><rect x="74.0" y="533" width="2.0" height="15.0" fill="rgb(223,3,36)" rx="2" ry="2" />
+<text text-anchor="" x="76.95" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;::deallocate (1 samples, 0.17%)</title><rect x="1099.2" y="101" width="2.1" height="15.0" fill="rgb(220,104,0)" rx="2" ry="2" />
+<text text-anchor="" x="1102.23" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTSNode::MCTSNode (8 samples, 1.40%)</title><rect x="55.4" y="549" width="16.5" height="15.0" fill="rgb(249,19,12)" rx="2" ry="2" />
+<text text-anchor="" x="58.38" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::vector&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::reserve (1 samples, 0.17%)</title><rect x="69.8" y="533" width="2.1" height="15.0" fill="rgb(239,56,18)" rx="2" ry="2" />
+<text text-anchor="" x="72.83" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.get__anon_3281 (1 samples, 0.17%)</title><rect x="501.0" y="469" width="2.0" height="15.0" fill="rgb(212,179,0)" rx="2" ry="2" />
+<text text-anchor="" x="503.98" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3 samples, 0.52%)</title><rect x="22.4" y="549" width="6.2" height="15.0" fill="rgb(210,7,3)" rx="2" ry="2" />
+<text text-anchor="" x="25.38" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Rolls.paralyzed__anon_3716 (1 samples, 0.17%)</title><rect x="573.2" y="469" width="2.0" height="15.0" fill="rgb(214,192,13)" rx="2" ry="2" />
+<text text-anchor="" x="576.18" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Vector_base&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::_M_deallocate (1 samples, 0.17%)</title><rect x="1099.2" y="133" width="2.1" height="15.0" fill="rgb(206,95,8)" rx="2" ry="2" />
+<text text-anchor="" x="1102.23" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>unsigned long const&amp; std::max&lt;unsigned long&gt; (1 samples, 0.17%)</title><rect x="84.3" y="501" width="2.0" height="15.0" fill="rgb(228,113,21)" rx="2" ry="2" />
+<text text-anchor="" x="87.27" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (76 samples, 13.29%)</title><rect x="166.8" y="549" width="156.8" height="15.0" fill="rgb(212,208,53)" rx="2" ry="2" />
+<text text-anchor="" x="169.78" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.data.Battle</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (356 samples, 62.24%)</title><rect x="344.2" y="549" width="734.4" height="15.0" fill="rgb(227,149,52)" rx="2" ry="2" />
+<text text-anchor="" x="347.20" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.data.Battle</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.stored__anon_3277 (1 samples, 0.17%)</title><rect x="608.3" y="437" width="2.0" height="15.0" fill="rgb(216,154,27)" rx="2" ry="2" />
+<text text-anchor="" x="611.25" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>float* std::__uninitialized_default_n_a&lt;float*, unsigned long, float&gt; (1 samples, 0.17%)</title><rect x="1187.9" y="549" width="2.1" height="15.0" fill="rgb(224,157,29)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.checkEBC__anon_5721 (3 samples, 0.52%)</title><rect x="43.0" y="501" width="6.2" height="15.0" fill="rgb(238,198,44)" rx="2" ry="2" />
+<text text-anchor="" x="46.01" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>void std::__fill_a&lt;float*, float&gt; (1 samples, 0.17%)</title><rect x="1187.9" y="453" width="2.1" height="15.0" fill="rgb(235,115,7)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.choices__anon_5723 (2 samples, 0.35%)</title><rect x="57.4" y="501" width="4.2" height="15.0" fill="rgb(218,184,7)" rx="2" ry="2" />
+<text text-anchor="" x="60.45" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>cfree (1 samples, 0.17%)</title><rect x="1099.2" y="69" width="2.1" height="15.0" fill="rgb(248,31,40)" rx="2" ry="2" />
+<text text-anchor="" x="1102.23" y="79.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.Gen56.advance (5 samples, 0.87%)</title><rect x="1082.7" y="517" width="10.3" height="15.0" fill="rgb(206,71,5)" rx="2" ry="2" />
+<text text-anchor="" x="1085.73" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (7 samples, 1.22%)</title><rect x="34.8" y="549" width="14.4" height="15.0" fill="rgb(249,76,52)" rx="2" ry="2" />
+<text text-anchor="" x="37.76" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>float* std::__uninitialized_default_n_1&lt;true&gt;::__uninit_default_n&lt;float*, unsigned long&gt; (1 samples, 0.17%)</title><rect x="1187.9" y="501" width="2.1" height="15.0" fill="rgb(249,22,24)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::pair&lt;unsigned char, unsigned char&gt;::pair&lt;unsigned char&amp;, unsigned char&amp;&gt; (1 samples, 0.17%)</title><rect x="67.8" y="485" width="2.0" height="15.0" fill="rgb(247,144,43)" rx="2" ry="2" />
+<text text-anchor="" x="70.76" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.confusion__anon_3924 (1 samples, 0.17%)</title><rect x="606.2" y="453" width="2.1" height="15.0" fill="rgb(219,202,49)" rx="2" ry="2" />
+<text text-anchor="" x="609.19" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.beforeMove__anon_3303 (14 samples, 2.45%)</title><rect x="548.4" y="485" width="28.9" height="15.0" fill="rgb(225,226,7)" rx="2" ry="2" />
+<text text-anchor="" x="551.43" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >ge..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::_M_deallocate_nodes (2 samples, 0.35%)</title><rect x="1097.2" y="293" width="4.1" height="15.0" fill="rgb(243,10,21)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="303.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::_M_deallocate_nodes (2 samples, 0.35%)</title><rect x="1097.2" y="453" width="4.1" height="15.0" fill="rgb(250,62,32)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;::~pair (2 samples, 0.35%)</title><rect x="1097.2" y="389" width="4.1" height="15.0" fill="rgb(254,87,41)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="399.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__libc_start_main (562 samples, 98.25%)</title><rect x="30.6" y="645" width="1159.4" height="15.0" fill="rgb(230,196,38)" rx="2" ry="2" />
+<text text-anchor="" x="33.63" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >__libc_start_main</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.moveEffect__anon_4962 (5 samples, 0.87%)</title><rect x="775.3" y="469" width="10.4" height="15.0" fill="rgb(216,164,27)" rx="2" ry="2" />
+<text text-anchor="" x="778.35" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>memcpy (1 samples, 0.17%)</title><rect x="32.7" y="565" width="2.1" height="15.0" fill="rgb(251,86,27)" rx="2" ry="2" />
+<text text-anchor="" x="35.69" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.doMove__anon_4386 (101 samples, 17.66%)</title><rect x="618.6" y="485" width="208.3" height="15.0" fill="rgb(211,22,23)" rx="2" ry="2" />
+<text text-anchor="" x="621.57" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.mechanics.doMove__anon..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>malloc (1 samples, 0.17%)</title><rect x="69.8" y="437" width="2.1" height="15.0" fill="rgb(227,9,14)" rx="2" ry="2" />
+<text text-anchor="" x="72.83" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::_M_deallocate_node (2 samples, 0.35%)</title><rect x="1097.2" y="277" width="4.1" height="15.0" fill="rgb(223,2,16)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="287.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::vector&lt;float, std::allocator&lt;float&gt; &gt;::_M_default_append (1 samples, 0.17%)</title><rect x="1187.9" y="565" width="2.1" height="15.0" fill="rgb(251,197,17)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="26.5" y="485" width="2.1" height="15.0" fill="rgb(229,93,23)" rx="2" ry="2" />
+<text text-anchor="" x="29.50" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::operator== (1 samples, 0.17%)</title><rect x="135.8" y="565" width="2.1" height="15.0" fill="rgb(246,224,49)" rx="2" ry="2" />
+<text text-anchor="" x="138.84" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.PSRNG.range__anon_3273 (1 samples, 0.17%)</title><rect x="573.2" y="437" width="2.0" height="15.0" fill="rgb(227,66,46)" rx="2" ry="2" />
+<text text-anchor="" x="576.18" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>float* std::fill_n&lt;float*, unsigned long, float&gt; (1 samples, 0.17%)</title><rect x="1187.9" y="485" width="2.1" height="15.0" fill="rgb(233,112,42)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.decrementPP (3 samples, 0.52%)</title><rect x="595.9" y="469" width="6.2" height="15.0" fill="rgb(227,152,9)" rx="2" ry="2" />
+<text text-anchor="" x="598.87" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.counterDamage__anon_4659 (1 samples, 0.17%)</title><rect x="773.3" y="469" width="2.0" height="15.0" fill="rgb(237,152,26)" rx="2" ry="2" />
+<text text-anchor="" x="776.29" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::log (40 samples, 6.99%)</title><rect x="1105.4" y="581" width="82.5" height="15.0" fill="rgb(254,205,21)" rx="2" ry="2" />
+<text text-anchor="" x="1108.42" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >std::log</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unordered_map&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;, pkmndriver::Gen1::PairHash, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; &gt;::~unordered_map (2 samples, 0.35%)</title><rect x="1097.2" y="325" width="4.1" height="15.0" fill="rgb(231,110,15)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="335.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="18.3" y="565" width="2.0" height="15.0" fill="rgb(215,145,37)" rx="2" ry="2" />
+<text text-anchor="" x="21.25" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.onBegin__anon_3923 (8 samples, 1.40%)</title><rect x="602.1" y="469" width="16.5" height="15.0" fill="rgb(239,185,29)" rx="2" ry="2" />
+<text text-anchor="" x="605.06" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_insert_unique_node (5 samples, 0.87%)</title><rect x="76.0" y="533" width="10.3" height="15.0" fill="rgb(242,48,41)" rx="2" ry="2" />
+<text text-anchor="" x="79.01" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[libc.so.6] (2 samples, 0.35%)</title><rect x="86.3" y="421" width="4.2" height="15.0" fill="rgb(246,90,18)" rx="2" ry="2" />
+<text text-anchor="" x="89.33" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTS::initialize_log_cache (43 samples, 7.52%)</title><rect x="1101.3" y="597" width="88.7" height="15.0" fill="rgb(210,53,34)" rx="2" ry="2" />
+<text text-anchor="" x="1104.29" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >pkmndriver..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.moves.Move.Effect.alwaysHappens (1 samples, 0.17%)</title><rect x="697.0" y="469" width="2.0" height="15.0" fill="rgb(238,15,32)" rx="2" ry="2" />
+<text text-anchor="" x="699.96" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTSNode::~MCTSNode (2 samples, 0.35%)</title><rect x="1097.2" y="341" width="4.1" height="15.0" fill="rgb(247,13,49)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="351.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>void std::destroy_at&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; (2 samples, 0.35%)</title><rect x="1097.2" y="245" width="4.1" height="15.0" fill="rgb(228,113,53)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="255.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTS::select_best_uct_child (23 samples, 4.02%)</title><rect x="90.5" y="581" width="47.4" height="15.0" fill="rgb(243,209,36)" rx="2" ry="2" />
+<text text-anchor="" x="93.45" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >pkmn..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTSNode::is_fully_expanded (1 samples, 0.17%)</title><rect x="1095.1" y="581" width="2.1" height="15.0" fill="rgb(222,8,35)" rx="2" ry="2" />
+<text text-anchor="" x="1098.10" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unordered_map&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;, pkmndriver::Gen1::PairHash, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; &gt;::~unordered_map (2 samples, 0.35%)</title><rect x="1097.2" y="485" width="4.1" height="15.0" fill="rgb(236,177,4)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="26.5" y="517" width="2.1" height="15.0" fill="rgb(251,192,14)" rx="2" ry="2" />
+<text text-anchor="" x="29.50" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unordered_map&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;, pkmndriver::Gen1::PairHash, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; &gt;::size (1 samples, 0.17%)</title><rect x="1095.1" y="565" width="2.1" height="15.0" fill="rgb(214,45,19)" rx="2" ry="2" />
+<text text-anchor="" x="1098.10" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (1 samples, 0.17%)</title><rect x="771.2" y="453" width="2.1" height="15.0" fill="rgb(216,68,8)" rx="2" ry="2" />
+<text text-anchor="" x="774.22" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (2 samples, 0.35%)</title><rect x="57.4" y="517" width="4.2" height="15.0" fill="rgb(246,19,50)" rx="2" ry="2" />
+<text text-anchor="" x="60.45" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.Gen56.advance (1 samples, 0.17%)</title><rect x="573.2" y="405" width="2.0" height="15.0" fill="rgb(250,69,39)" rx="2" ry="2" />
+<text text-anchor="" x="576.18" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>memcpy (1 samples, 0.17%)</title><rect x="47.1" y="485" width="2.1" height="15.0" fill="rgb(241,121,35)" rx="2" ry="2" />
+<text text-anchor="" x="50.13" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>operator new (1 samples, 0.17%)</title><rect x="69.8" y="453" width="2.1" height="15.0" fill="rgb(241,77,20)" rx="2" ry="2" />
+<text text-anchor="" x="72.83" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="28.6" y="613" width="2.0" height="15.0" fill="rgb(249,79,42)" rx="2" ry="2" />
+<text text-anchor="" x="31.57" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt;::operator (2 samples, 0.35%)</title><rect x="1097.2" y="197" width="4.1" height="15.0" fill="rgb(246,47,54)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="207.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.freezeChance__anon_4963 (1 samples, 0.17%)</title><rect x="779.5" y="453" width="2.0" height="15.0" fill="rgb(241,112,12)" rx="2" ry="2" />
+<text text-anchor="" x="782.48" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>operator new (2 samples, 0.35%)</title><rect x="86.3" y="453" width="4.2" height="15.0" fill="rgb(209,50,3)" rx="2" ry="2" />
+<text text-anchor="" x="89.33" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.faint__anon_5714 (1 samples, 0.17%)</title><rect x="503.0" y="485" width="2.1" height="15.0" fill="rgb(224,76,37)" rx="2" ry="2" />
+<text text-anchor="" x="506.04" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_ZSt12construct_atISt4pairIhhEJRhS2_EQaant20is_unbounded_array_vIT_ErqXgsnwcvPvLi0E_S3_pispcl7declvalIT0_EEEEEPS3_S6_DpOS5_ (1 samples, 0.17%)</title><rect x="67.8" y="501" width="2.0" height="15.0" fill="rgb(228,57,51)" rx="2" ry="2" />
+<text text-anchor="" x="70.76" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_allocate_buckets (1 samples, 0.17%)</title><rect x="80.1" y="501" width="2.1" height="15.0" fill="rgb(238,66,34)" rx="2" ry="2" />
+<text text-anchor="" x="83.14" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>malloc (1 samples, 0.17%)</title><rect x="80.1" y="405" width="2.1" height="15.0" fill="rgb(240,218,49)" rx="2" ry="2" />
+<text text-anchor="" x="83.14" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::_M_deallocate_buckets (1 samples, 0.17%)</title><rect x="1097.2" y="101" width="2.0" height="15.0" fill="rgb(239,26,40)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="111.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.checkHit__anon_4072 (1 samples, 0.17%)</title><rect x="824.9" y="453" width="2.0" height="15.0" fill="rgb(234,179,13)" rx="2" ry="2" />
+<text text-anchor="" x="827.86" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[ld-linux-x86-64.so.2] (6 samples, 1.05%)</title><rect x="10.0" y="613" width="12.4" height="15.0" fill="rgb(248,4,32)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_deallocate_buckets (1 samples, 0.17%)</title><rect x="1097.2" y="133" width="2.0" height="15.0" fill="rgb(254,169,21)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="143.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3 samples, 0.52%)</title><rect x="22.4" y="613" width="6.2" height="15.0" fill="rgb(238,229,18)" rx="2" ry="2" />
+<text text-anchor="" x="25.38" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.data.Player.foe (2 samples, 0.35%)</title><rect x="610.3" y="421" width="4.1" height="15.0" fill="rgb(251,225,45)" rx="2" ry="2" />
+<text text-anchor="" x="613.31" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;::allocate (1 samples, 0.17%)</title><rect x="69.8" y="485" width="2.1" height="15.0" fill="rgb(222,65,19)" rx="2" ry="2" />
+<text text-anchor="" x="72.83" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;::~pair (2 samples, 0.35%)</title><rect x="1097.2" y="229" width="4.1" height="15.0" fill="rgb(217,33,20)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="239.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>logf (40 samples, 6.99%)</title><rect x="1105.4" y="565" width="82.5" height="15.0" fill="rgb(233,138,20)" rx="2" ry="2" />
+<text text-anchor="" x="1108.42" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >logf</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[ld-linux-x86-64.so.2] (1 samples, 0.17%)</title><rect x="16.2" y="565" width="2.1" height="15.0" fill="rgb(232,4,37)" rx="2" ry="2" />
+<text text-anchor="" x="19.19" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.drainHP__anon_4955 (1 samples, 0.17%)</title><rect x="713.5" y="453" width="2.0" height="15.0" fill="rgb(251,63,31)" rx="2" ry="2" />
+<text text-anchor="" x="716.46" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Prime_rehash_policy::_M_need_rehash (2 samples, 0.35%)</title><rect x="82.2" y="517" width="4.1" height="15.0" fill="rgb(241,89,46)" rx="2" ry="2" />
+<text text-anchor="" x="85.20" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.checkEBC__anon_5721 (80 samples, 13.99%)</title><rect x="882.6" y="501" width="165.1" height="15.0" fill="rgb(205,9,5)" rx="2" ry="2" />
+<text text-anchor="" x="885.62" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.mechanics.checkE..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator_traits&lt;std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::deallocate (1 samples, 0.17%)</title><rect x="1099.2" y="117" width="2.1" height="15.0" fill="rgb(205,155,51)" rx="2" ry="2" />
+<text text-anchor="" x="1102.23" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Map_base&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt;, true&gt;::operator[] (8 samples, 1.40%)</title><rect x="74.0" y="549" width="16.5" height="15.0" fill="rgb(210,190,7)" rx="2" ry="2" />
+<text text-anchor="" x="76.95" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>void std::allocator_traits&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::destroy&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; (2 samples, 0.35%)</title><rect x="1097.2" y="421" width="4.1" height="15.0" fill="rgb(228,121,48)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.beforeMove__anon_3303 (1 samples, 0.17%)</title><rect x="40.9" y="485" width="2.1" height="15.0" fill="rgb(225,105,50)" rx="2" ry="2" />
+<text text-anchor="" x="43.94" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTSNode::~MCTSNode (2 samples, 0.35%)</title><rect x="1097.2" y="181" width="4.1" height="15.0" fill="rgb(227,134,36)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="191.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>mcts_analysis (572 samples, 100.00%)</title><rect x="10.0" y="677" width="1180.0" height="15.0" fill="rgb(228,88,0)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="687.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >mcts_analysis</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTS::expand (28 samples, 4.90%)</title><rect x="32.7" y="581" width="57.8" height="15.0" fill="rgb(214,27,47)" rx="2" ry="2" />
+<text text-anchor="" x="35.69" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >pkmndr..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.choices__anon_5723 (76 samples, 13.29%)</title><rect x="166.8" y="533" width="156.8" height="15.0" fill="rgb(245,226,19)" rx="2" ry="2" />
+<text text-anchor="" x="169.78" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.mechanics.choic..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.specialDamage__anon_4387 (1 samples, 0.17%)</title><rect x="824.9" y="469" width="2.0" height="15.0" fill="rgb(248,190,37)" rx="2" ry="2" />
+<text text-anchor="" x="827.86" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::vector&lt;float, std::allocator&lt;float&gt; &gt;::resize (1 samples, 0.17%)</title><rect x="1187.9" y="581" width="2.1" height="15.0" fill="rgb(232,219,13)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_deallocate_buckets (1 samples, 0.17%)</title><rect x="1097.2" y="117" width="2.0" height="15.0" fill="rgb(209,59,48)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="127.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__new_allocator&lt;std::__detail::_Hash_node_base*&gt;::deallocate (1 samples, 0.17%)</title><rect x="1097.2" y="53" width="2.0" height="15.0" fill="rgb(254,170,46)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="63.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.doTurn__anon_3275 (1 samples, 0.17%)</title><rect x="40.9" y="517" width="2.1" height="15.0" fill="rgb(253,153,17)" rx="2" ry="2" />
+<text text-anchor="" x="43.94" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.stored__anon_3277 (2 samples, 0.35%)</title><rect x="692.8" y="469" width="4.2" height="15.0" fill="rgb(212,92,29)" rx="2" ry="2" />
+<text text-anchor="" x="695.83" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.adjustDamage__anon_4660 (4 samples, 0.70%)</title><rect x="703.1" y="469" width="8.3" height="15.0" fill="rgb(235,137,38)" rx="2" ry="2" />
+<text text-anchor="" x="706.15" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (1 samples, 0.17%)</title><rect x="709.3" y="453" width="2.1" height="15.0" fill="rgb(237,78,47)" rx="2" ry="2" />
+<text text-anchor="" x="712.34" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt;* std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::_M_allocate_node&lt;std::piecewise_construct_t const&amp;, std::tuple&lt;std::pair&lt;unsigned char, unsigned char&gt; const&amp;&gt;, std::tuple&lt;&gt; &gt; (2 samples, 0.35%)</title><rect x="86.3" y="517" width="4.2" height="15.0" fill="rgb(251,150,50)" rx="2" ry="2" />
+<text text-anchor="" x="89.33" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="18.3" y="549" width="2.0" height="15.0" fill="rgb(247,153,15)" rx="2" ry="2" />
+<text text-anchor="" x="21.25" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>float* std::__uninitialized_default_n_1&lt;true&gt;::__uninit_default_n&lt;float*, unsigned long&gt; (1 samples, 0.17%)</title><rect x="1187.9" y="517" width="2.1" height="15.0" fill="rgb(209,207,12)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.selectMove__anon_2959 (13 samples, 2.27%)</title><rect x="1047.7" y="517" width="26.8" height="15.0" fill="rgb(219,76,5)" rx="2" ry="2" />
+<text text-anchor="" x="1050.66" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >g..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (1 samples, 0.17%)</title><rect x="606.2" y="437" width="2.1" height="15.0" fill="rgb(246,203,54)" rx="2" ry="2" />
+<text text-anchor="" x="609.19" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.stored__anon_3277 (1 samples, 0.17%)</title><rect x="878.5" y="485" width="2.1" height="15.0" fill="rgb(229,205,45)" rx="2" ry="2" />
+<text text-anchor="" x="881.50" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator&lt;std::__detail::_Hash_node_base*&gt;::allocate (1 samples, 0.17%)</title><rect x="80.1" y="453" width="2.1" height="15.0" fill="rgb(237,169,33)" rx="2" ry="2" />
+<text text-anchor="" x="83.14" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.substitute__anon_3937 (1 samples, 0.17%)</title><rect x="616.5" y="453" width="2.1" height="15.0" fill="rgb(250,53,46)" rx="2" ry="2" />
+<text text-anchor="" x="619.50" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator_traits&lt;std::allocator&lt;std::__detail::_Hash_node_base*&gt; &gt;::deallocate (1 samples, 0.17%)</title><rect x="1097.2" y="85" width="2.0" height="15.0" fill="rgb(208,127,22)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="95.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>float* std::__uninitialized_default_n&lt;float*, unsigned long&gt; (1 samples, 0.17%)</title><rect x="1187.9" y="533" width="2.1" height="15.0" fill="rgb(237,158,16)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt;::operator (2 samples, 0.35%)</title><rect x="1097.2" y="357" width="4.1" height="15.0" fill="rgb(223,45,21)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="367.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;::~unique_ptr (2 samples, 0.35%)</title><rect x="1097.2" y="213" width="4.1" height="15.0" fill="rgb(217,13,50)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="223.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Vector_base&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::_M_allocate (1 samples, 0.17%)</title><rect x="69.8" y="517" width="2.1" height="15.0" fill="rgb(222,138,36)" rx="2" ry="2" />
+<text text-anchor="" x="72.83" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_start (562 samples, 98.25%)</title><rect x="30.6" y="661" width="1159.4" height="15.0" fill="rgb(239,214,39)" rx="2" ry="2" />
+<text text-anchor="" x="33.63" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_start</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__uniq_ptr_impl&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;::operator= (2 samples, 0.35%)</title><rect x="1097.2" y="549" width="4.1" height="15.0" fill="rgb(210,215,38)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTS::backpropagate (1 samples, 0.17%)</title><rect x="30.6" y="581" width="2.1" height="15.0" fill="rgb(230,127,3)" rx="2" ry="2" />
+<text text-anchor="" x="33.63" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.ActivePokemon.move__anon_3301 (1 samples, 0.17%)</title><rect x="600.0" y="453" width="2.1" height="15.0" fill="rgb(212,71,34)" rx="2" ry="2" />
+<text text-anchor="" x="603.00" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_rehash (2 samples, 0.35%)</title><rect x="78.1" y="517" width="4.1" height="15.0" fill="rgb(228,218,12)" rx="2" ry="2" />
+<text text-anchor="" x="81.08" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.PSRNG.range__anon_3273 (1 samples, 0.17%)</title><rect x="822.8" y="437" width="2.1" height="15.0" fill="rgb(235,44,21)" rx="2" ry="2" />
+<text text-anchor="" x="825.80" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Vector_base&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::~_Vector_base (1 samples, 0.17%)</title><rect x="1099.2" y="149" width="2.1" height="15.0" fill="rgb(238,172,44)" rx="2" ry="2" />
+<text text-anchor="" x="1102.23" y="159.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_find_before_node (1 samples, 0.17%)</title><rect x="74.0" y="517" width="2.0" height="15.0" fill="rgb(218,76,9)" rx="2" ry="2" />
+<text text-anchor="" x="76.95" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3 samples, 0.52%)</title><rect x="22.4" y="597" width="6.2" height="15.0" fill="rgb(234,204,37)" rx="2" ry="2" />
+<text text-anchor="" x="25.38" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.moves.Move.get (1 samples, 0.17%)</title><rect x="699.0" y="469" width="2.1" height="15.0" fill="rgb(239,71,53)" rx="2" ry="2" />
+<text text-anchor="" x="702.02" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_find_before_node (1 samples, 0.17%)</title><rect x="71.9" y="517" width="2.1" height="15.0" fill="rgb(218,56,54)" rx="2" ry="2" />
+<text text-anchor="" x="74.89" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmn_psrng_next (7 samples, 1.22%)</title><rect x="1078.6" y="565" width="14.4" height="15.0" fill="rgb(211,215,7)" rx="2" ry="2" />
+<text text-anchor="" x="1081.60" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="18.3" y="517" width="2.0" height="15.0" fill="rgb(236,91,19)" rx="2" ry="2" />
+<text text-anchor="" x="21.25" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Status.is (1 samples, 0.17%)</title><rect x="571.1" y="469" width="2.1" height="15.0" fill="rgb(246,18,24)" rx="2" ry="2" />
+<text text-anchor="" x="574.12" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="28.6" y="597" width="2.0" height="15.0" fill="rgb(218,111,38)" rx="2" ry="2" />
+<text text-anchor="" x="31.57" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.disabled__anon_3441 (1 samples, 0.17%)</title><rect x="575.2" y="469" width="2.1" height="15.0" fill="rgb(214,86,5)" rx="2" ry="2" />
+<text text-anchor="" x="578.24" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;::~unique_ptr (2 samples, 0.35%)</title><rect x="1097.2" y="373" width="4.1" height="15.0" fill="rgb(220,202,13)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="383.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.checkHit__anon_4072 (1 samples, 0.17%)</title><rect x="614.4" y="437" width="2.1" height="15.0" fill="rgb(210,133,44)" rx="2" ry="2" />
+<text text-anchor="" x="617.44" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>void std::__fill_a1&lt;float*, float&gt; (1 samples, 0.17%)</title><rect x="1187.9" y="437" width="2.1" height="15.0" fill="rgb(236,12,44)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::MCTS::simulate (464 samples, 81.12%)</title><rect x="137.9" y="581" width="957.2" height="15.0" fill="rgb(219,108,19)" rx="2" ry="2" />
+<text text-anchor="" x="140.90" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >pkmndriver::Gen1::MCTS::simulate</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.boost__anon_3890 (3 samples, 0.52%)</title><rect x="812.5" y="453" width="6.2" height="15.0" fill="rgb(230,163,9)" rx="2" ry="2" />
+<text text-anchor="" x="815.48" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (1 samples, 0.17%)</title><rect x="781.5" y="437" width="2.1" height="15.0" fill="rgb(240,164,35)" rx="2" ry="2" />
+<text text-anchor="" x="784.54" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.randomizeDamage__anon_4661 (3 samples, 0.52%)</title><rect x="818.7" y="469" width="6.2" height="15.0" fill="rgb(234,54,38)" rx="2" ry="2" />
+<text text-anchor="" x="821.67" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.Gen56.advance (1 samples, 0.17%)</title><rect x="822.8" y="405" width="2.1" height="15.0" fill="rgb(250,116,14)" rx="2" ry="2" />
+<text text-anchor="" x="825.80" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>float* std::__fill_n_a&lt;float*, unsigned long, float&gt; (1 samples, 0.17%)</title><rect x="1187.9" y="469" width="2.1" height="15.0" fill="rgb(251,190,4)" rx="2" ry="2" />
+<text text-anchor="" x="1190.94" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (1 samples, 0.17%)</title><rect x="779.5" y="437" width="2.0" height="15.0" fill="rgb(233,71,8)" rx="2" ry="2" />
+<text text-anchor="" x="782.48" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.applyDamage__anon_3712 (5 samples, 0.87%)</title><rect x="717.6" y="469" width="10.3" height="15.0" fill="rgb(213,142,29)" rx="2" ry="2" />
+<text text-anchor="" x="720.59" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmndriver::Gen1::fast_sqrt (4 samples, 0.70%)</title><rect x="127.6" y="565" width="8.2" height="15.0" fill="rgb(249,225,32)" rx="2" ry="2" />
+<text text-anchor="" x="130.59" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="26.5" y="501" width="2.1" height="15.0" fill="rgb(205,154,23)" rx="2" ry="2" />
+<text text-anchor="" x="29.50" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.PSRNG.chance__anon_3707 (1 samples, 0.17%)</title><rect x="573.2" y="453" width="2.0" height="15.0" fill="rgb(242,43,31)" rx="2" ry="2" />
+<text text-anchor="" x="576.18" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.canMove__anon_3916 (20 samples, 3.50%)</title><rect x="577.3" y="485" width="41.3" height="15.0" fill="rgb(229,60,9)" rx="2" ry="2" />
+<text text-anchor="" x="580.31" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::pair&lt;unsigned char, unsigned char&gt;&amp; std::vector&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::emplace_back&lt;unsigned char&amp;, unsigned char&amp;&gt; (4 samples, 0.70%)</title><rect x="61.6" y="533" width="8.2" height="15.0" fill="rgb(212,12,50)" rx="2" ry="2" />
+<text text-anchor="" x="64.57" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.doTurn__anon_3275 (219 samples, 38.29%)</title><rect x="428.8" y="517" width="451.8" height="15.0" fill="rgb(240,49,29)" rx="2" ry="2" />
+<text text-anchor="" x="431.78" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.mechanics.doTurn__anon_3275</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.calcDamage__anon_3710 (22 samples, 3.85%)</title><rect x="727.9" y="469" width="45.4" height="15.0" fill="rgb(220,43,45)" rx="2" ry="2" />
+<text text-anchor="" x="730.90" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.paralyze__anon_3933 (3 samples, 0.52%)</title><rect x="610.3" y="453" width="6.2" height="15.0" fill="rgb(245,165,38)" rx="2" ry="2" />
+<text text-anchor="" x="613.31" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.update__anon_2957 (356 samples, 62.24%)</title><rect x="344.2" y="533" width="734.4" height="15.0" fill="rgb(207,100,26)" rx="2" ry="2" />
+<text text-anchor="" x="347.20" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.mechanics.update__anon_2957</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__new_allocator&lt;std::pair&lt;pkmndriver::Gen1::Move, float&gt; &gt;::allocate (1 samples, 0.17%)</title><rect x="80.1" y="437" width="2.1" height="15.0" fill="rgb(253,144,5)" rx="2" ry="2" />
+<text text-anchor="" x="83.14" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.hyperBeam__anon_4964 (1 samples, 0.17%)</title><rect x="781.5" y="453" width="2.1" height="15.0" fill="rgb(215,188,22)" rx="2" ry="2" />
+<text text-anchor="" x="784.54" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator&lt;std::__detail::_Hash_node_base*&gt;::deallocate (1 samples, 0.17%)</title><rect x="1097.2" y="69" width="2.0" height="15.0" fill="rgb(218,165,33)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="79.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.executeMove__anon_3278 (168 samples, 29.37%)</title><rect x="505.1" y="501" width="346.6" height="15.0" fill="rgb(248,61,22)" rx="2" ry="2" />
+<text text-anchor="" x="508.10" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen1.mechanics.executeMove__anon_3278</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.moveHit__anon_4073 (12 samples, 2.10%)</title><rect x="785.7" y="469" width="24.7" height="15.0" fill="rgb(240,78,8)" rx="2" ry="2" />
+<text text-anchor="" x="788.66" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >g..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__uniq_ptr_impl&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;::reset (2 samples, 0.35%)</title><rect x="1097.2" y="533" width="4.1" height="15.0" fill="rgb(233,78,2)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.alwaysHappens__anon_4951 (3 samples, 0.52%)</title><rect x="711.4" y="469" width="6.2" height="15.0" fill="rgb(224,38,44)" rx="2" ry="2" />
+<text text-anchor="" x="714.40" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.heal__anon_3928 (1 samples, 0.17%)</title><rect x="608.3" y="453" width="2.0" height="15.0" fill="rgb(218,20,11)" rx="2" ry="2" />
+<text text-anchor="" x="611.25" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[ld-linux-x86-64.so.2] (6 samples, 1.05%)</title><rect x="10.0" y="629" width="12.4" height="15.0" fill="rgb(218,41,10)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>malloc (2 samples, 0.35%)</title><rect x="86.3" y="437" width="4.2" height="15.0" fill="rgb(234,171,20)" rx="2" ry="2" />
+<text text-anchor="" x="89.33" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;::operator= (2 samples, 0.35%)</title><rect x="1097.2" y="581" width="4.1" height="15.0" fill="rgb(222,80,45)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.recoil__anon_4954 (1 samples, 0.17%)</title><rect x="715.5" y="453" width="2.1" height="15.0" fill="rgb(214,81,5)" rx="2" ry="2" />
+<text text-anchor="" x="718.52" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[libc.so.6] (3 samples, 0.52%)</title><rect x="49.2" y="517" width="6.2" height="15.0" fill="rgb(248,199,52)" rx="2" ry="2" />
+<text text-anchor="" x="52.20" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.get__anon_3281 (2 samples, 0.35%)</title><rect x="692.8" y="453" width="4.2" height="15.0" fill="rgb(218,64,33)" rx="2" ry="2" />
+<text text-anchor="" x="695.83" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt;::operator (2 samples, 0.35%)</title><rect x="1097.2" y="517" width="4.1" height="15.0" fill="rgb(238,4,29)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_locate (1 samples, 0.17%)</title><rect x="71.9" y="533" width="2.1" height="15.0" fill="rgb(227,46,19)" rx="2" ry="2" />
+<text text-anchor="" x="74.89" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmn_gen1_battle_choices (76 samples, 13.29%)</title><rect x="166.8" y="565" width="156.8" height="15.0" fill="rgb(241,200,31)" rx="2" ry="2" />
+<text text-anchor="" x="169.78" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >pkmn_gen1_battle_cho..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Rolls.damage__anon_4662 (1 samples, 0.17%)</title><rect x="822.8" y="453" width="2.1" height="15.0" fill="rgb(241,193,49)" rx="2" ry="2" />
+<text text-anchor="" x="825.80" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="28.6" y="645" width="2.0" height="15.0" fill="rgb(206,102,18)" rx="2" ry="2" />
+<text text-anchor="" x="31.57" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.stored__anon_3277 (1 samples, 0.17%)</title><rect x="474.2" y="501" width="2.0" height="15.0" fill="rgb(235,225,1)" rx="2" ry="2" />
+<text text-anchor="" x="477.16" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.turnOrder__anon_2977 (2 samples, 0.35%)</title><rect x="1074.5" y="517" width="4.1" height="15.0" fill="rgb(208,150,45)" rx="2" ry="2" />
+<text text-anchor="" x="1077.48" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[ld-linux-x86-64.so.2] (9 samples, 1.57%)</title><rect x="10.0" y="645" width="18.6" height="15.0" fill="rgb(242,161,25)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="655.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>operator new (1 samples, 0.17%)</title><rect x="80.1" y="421" width="2.1" height="15.0" fill="rgb(217,134,43)" rx="2" ry="2" />
+<text text-anchor="" x="83.14" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.data.Player.foe (1 samples, 0.17%)</title><rect x="606.2" y="421" width="2.1" height="15.0" fill="rgb(229,217,15)" rx="2" ry="2" />
+<text text-anchor="" x="609.19" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::vector&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt; &gt;::~vector (1 samples, 0.17%)</title><rect x="1099.2" y="165" width="2.1" height="15.0" fill="rgb(252,185,20)" rx="2" ry="2" />
+<text text-anchor="" x="1102.23" y="175.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[libc.so.6] (1 samples, 0.17%)</title><rect x="69.8" y="421" width="2.1" height="15.0" fill="rgb(218,195,38)" rx="2" ry="2" />
+<text text-anchor="" x="72.83" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.update__anon_2957 (7 samples, 1.22%)</title><rect x="34.8" y="533" width="14.4" height="15.0" fill="rgb(250,163,21)" rx="2" ry="2" />
+<text text-anchor="" x="37.76" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator_traits&lt;std::allocator&lt;std::__detail::_Hash_node_base*&gt; &gt;::allocate (1 samples, 0.17%)</title><rect x="80.1" y="469" width="2.1" height="15.0" fill="rgb(249,137,36)" rx="2" ry="2" />
+<text text-anchor="" x="83.14" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__tunable_get_val (1 samples, 0.17%)</title><rect x="20.3" y="597" width="2.1" height="15.0" fill="rgb(214,151,45)" rx="2" ry="2" />
+<text text-anchor="" x="23.31" y="607.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.Gen56.next (1 samples, 0.17%)</title><rect x="822.8" y="421" width="2.1" height="15.0" fill="rgb(213,86,45)" rx="2" ry="2" />
+<text text-anchor="" x="825.80" y="431.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Hashtable_alloc&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::_M_allocate_buckets (1 samples, 0.17%)</title><rect x="80.1" y="485" width="2.1" height="15.0" fill="rgb(218,27,0)" rx="2" ry="2" />
+<text text-anchor="" x="83.14" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Battle (3 samples, 0.52%)</title><rect x="872.3" y="485" width="6.2" height="15.0" fill="rgb(211,109,52)" rx="2" ry="2" />
+<text text-anchor="" x="875.31" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_MakeUniq&lt;pkmndriver::Gen1::MCTSNode&gt;::__single_object std::make_unique&lt;pkmndriver::Gen1::MCTSNode, pkmn_gen1_battle&amp;, unsigned char&amp;, pkmndriver::Gen1::MCTSNode*&amp;&gt; (11 samples, 1.92%)</title><rect x="49.2" y="565" width="22.7" height="15.0" fill="rgb(239,117,32)" rx="2" ry="2" />
+<text text-anchor="" x="52.20" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="18.3" y="533" width="2.0" height="15.0" fill="rgb(240,143,20)" rx="2" ry="2" />
+<text text-anchor="" x="21.25" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmn_gen1_battle_update (7 samples, 1.22%)</title><rect x="34.8" y="565" width="14.4" height="15.0" fill="rgb(234,77,0)" rx="2" ry="2" />
+<text text-anchor="" x="37.76" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::unordered_map&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt;, pkmndriver::Gen1::PairHash, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; &gt;::operator[] (8 samples, 1.40%)</title><rect x="74.0" y="565" width="16.5" height="15.0" fill="rgb(212,47,12)" rx="2" ry="2" />
+<text text-anchor="" x="76.95" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>void std::destroy_at&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt; (2 samples, 0.35%)</title><rect x="1097.2" y="405" width="4.1" height="15.0" fill="rgb(239,136,12)" rx="2" ry="2" />
+<text text-anchor="" x="1100.17" y="415.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="26.5" y="453" width="2.1" height="15.0" fill="rgb(216,136,48)" rx="2" ry="2" />
+<text text-anchor="" x="29.50" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.types.Type.effectiveness (1 samples, 0.17%)</title><rect x="701.1" y="469" width="2.0" height="15.0" fill="rgb(217,24,27)" rx="2" ry="2" />
+<text text-anchor="" x="704.08" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_M_insert_bucket_begin (1 samples, 0.17%)</title><rect x="76.0" y="517" width="2.1" height="15.0" fill="rgb(247,7,33)" rx="2" ry="2" />
+<text text-anchor="" x="79.01" y="527.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__detail::_Prime_rehash_policy::_M_next_bkt (1 samples, 0.17%)</title><rect x="82.2" y="501" width="2.1" height="15.0" fill="rgb(244,67,53)" rx="2" ry="2" />
+<text text-anchor="" x="85.20" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3 samples, 0.52%)</title><rect x="22.4" y="629" width="6.2" height="15.0" fill="rgb(221,208,17)" rx="2" ry="2" />
+<text text-anchor="" x="25.38" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>main (562 samples, 98.25%)</title><rect x="30.6" y="613" width="1159.4" height="15.0" fill="rgb(207,32,46)" rx="2" ry="2" />
+<text text-anchor="" x="33.63" y="623.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >main</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__new_allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt;::allocate (2 samples, 0.35%)</title><rect x="86.3" y="469" width="4.2" height="15.0" fill="rgb(215,149,31)" rx="2" ry="2" />
+<text text-anchor="" x="89.33" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::allocator_traits&lt;std::allocator&lt;std::__detail::_Hash_node&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, true&gt; &gt; &gt;::allocate (2 samples, 0.35%)</title><rect x="86.3" y="501" width="4.2" height="15.0" fill="rgb(220,94,43)" rx="2" ry="2" />
+<text text-anchor="" x="89.33" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="28.6" y="629" width="2.0" height="15.0" fill="rgb(230,209,26)" rx="2" ry="2" />
+<text text-anchor="" x="31.57" y="639.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3 samples, 0.52%)</title><rect x="22.4" y="565" width="6.2" height="15.0" fill="rgb(252,128,29)" rx="2" ry="2" />
+<text text-anchor="" x="25.38" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.Side.stored__anon_3277 (1 samples, 0.17%)</title><rect x="501.0" y="485" width="2.0" height="15.0" fill="rgb(251,10,6)" rx="2" ry="2" />
+<text text-anchor="" x="503.98" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (3 samples, 0.52%)</title><rect x="22.4" y="581" width="6.2" height="15.0" fill="rgb(218,71,17)" rx="2" ry="2" />
+<text text-anchor="" x="25.38" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.Effects.paralyzeChance__anon_4967 (1 samples, 0.17%)</title><rect x="783.6" y="453" width="2.1" height="15.0" fill="rgb(222,153,8)" rx="2" ry="2" />
+<text text-anchor="" x="786.60" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmn_gen1_battle_choices (2 samples, 0.35%)</title><rect x="57.4" y="533" width="4.2" height="15.0" fill="rgb(242,108,47)" rx="2" ry="2" />
+<text text-anchor="" x="60.45" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::__new_allocator&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;::allocate (1 samples, 0.17%)</title><rect x="69.8" y="469" width="2.1" height="15.0" fill="rgb(221,187,50)" rx="2" ry="2" />
+<text text-anchor="" x="72.83" y="479.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="28.6" y="581" width="2.0" height="15.0" fill="rgb(234,89,1)" rx="2" ry="2" />
+<text text-anchor="" x="31.57" y="591.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.executeMove__anon_3278 (1 samples, 0.17%)</title><rect x="40.9" y="501" width="2.1" height="15.0" fill="rgb(233,148,21)" rx="2" ry="2" />
+<text text-anchor="" x="43.94" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.checkFaint__anon_4970 (14 samples, 2.45%)</title><rect x="476.2" y="501" width="28.9" height="15.0" fill="rgb(227,225,29)" rx="2" ry="2" />
+<text text-anchor="" x="479.22" y="511.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >ge..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.mechanics.moveHit__anon_4073 (1 samples, 0.17%)</title><rect x="824.9" y="437" width="2.0" height="15.0" fill="rgb(232,16,3)" rx="2" ry="2" />
+<text text-anchor="" x="827.86" y="447.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[ld-linux-x86-64.so.2] (10 samples, 1.75%)</title><rect x="10.0" y="661" width="20.6" height="15.0" fill="rgb(241,47,21)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="671.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[unknown] (1 samples, 0.17%)</title><rect x="697.0" y="453" width="2.0" height="15.0" fill="rgb(248,212,30)" rx="2" ry="2" />
+<text text-anchor="" x="699.96" y="463.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>[ld-linux-x86-64.so.2] (1 samples, 0.17%)</title><rect x="16.2" y="549" width="2.1" height="15.0" fill="rgb(206,88,6)" rx="2" ry="2" />
+<text text-anchor="" x="19.19" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>common.rng.PSRNG.next (5 samples, 0.87%)</title><rect x="1082.7" y="549" width="10.3" height="15.0" fill="rgb(247,105,52)" rx="2" ry="2" />
+<text text-anchor="" x="1085.73" y="559.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>all (572 samples, 100%)</title><rect x="10.0" y="693" width="1180.0" height="15.0" fill="rgb(238,138,6)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="703.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>gen1.data.types.Types.includes (1 samples, 0.17%)</title><rect x="967.2" y="485" width="2.1" height="15.0" fill="rgb(248,83,46)" rx="2" ry="2" />
+<text text-anchor="" x="970.20" y="495.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>pkmn_result_type (1 samples, 0.17%)</title><rect x="1093.0" y="565" width="2.1" height="15.0" fill="rgb(211,104,15)" rx="2" ry="2" />
+<text text-anchor="" x="1096.04" y="575.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>std::_Hashtable&lt;std::pair&lt;unsigned char, unsigned char&gt;, std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt;, std::allocator&lt;std::pair&lt;std::pair&lt;unsigned char, unsigned char&gt; const, std::unique_ptr&lt;pkmndriver::Gen1::MCTSNode, std::default_delete&lt;pkmndriver::Gen1::MCTSNode&gt; &gt; &gt; &gt;, std::__detail::_Select1st, std::equal_to&lt;std::pair&lt;unsigned char, unsigned char&gt; &gt;, pkmndriver::Gen1::PairHash, std::__detail::_Mod_range_hashing, std::__detail::_Default_ranged_hash, std::__detail::_Prime_rehash_policy, std::__detail::_Hashtable_traits&lt;true, false, true&gt; &gt;::_Scoped_node::_Scoped_node&lt;std::piecewise_construct_t const&amp;, std::tuple&lt;std::pair&lt;unsigned char, unsigned char&gt; const&amp;&gt;, std::tuple&lt;&gt; &gt; (2 samples, 0.35%)</title><rect x="86.3" y="533" width="4.2" height="15.0" fill="rgb(244,86,24)" rx="2" ry="2" />
+<text text-anchor="" x="89.33" y="543.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+</svg>

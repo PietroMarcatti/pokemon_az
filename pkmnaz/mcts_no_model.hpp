@@ -1,15 +1,11 @@
 #pragma once
 #include "gen1battle.hpp"
-#include <unordered_map>
 #include <memory>
-#include <vector>
-#include <algorithm> 
 #include <random>
 #include <cmath>
-#include <ranges>
 #include <numeric>
 #include <cstddef>  // for size_t
-#include "pkmndriver.hpp"
+#include <unordered_map>
 
 namespace pkmndriver {
     namespace Gen1 {
@@ -100,7 +96,7 @@ namespace pkmndriver {
 
         thread_local std::mt19937 MCTSNode::rd(std::random_device{}());
 
-        int move_to_index(pkmn_choice move) {
+        inline int move_to_index(pkmn_choice move) {
             switch (move) {
             case 0: return 0;
             case 1: return 1;

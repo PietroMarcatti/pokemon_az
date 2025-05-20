@@ -1,0 +1,7 @@
+/home/pietro/repos/pokemon_az/out/build/linux-debug/CMakeFiles/driver.dir
+/home/pietro/repos/pokemon_az/out/build/linux-debug/CMakeFiles/example.dir
+/home/pietro/repos/pokemon_az/out/build/linux-debug/CMakeFiles/pkmnaz.dir
+/home/pietro/repos/pokemon_az/out/build/linux-debug/CMakeFiles/mcts_analysis.dir
+/home/pietro/repos/pokemon_az/out/build/linux-debug/CMakeFiles/tester.dir
+/home/pietro/repos/pokemon_az/out/build/linux-debug/CMakeFiles/edit_cache.dir
+/home/pietro/repos/pokemon_az/out/build/linux-debug/CMakeFiles/rebuild_cache.dir

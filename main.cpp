@@ -10,7 +10,6 @@ int main() {
 		test_normal(1);
 	}
 
-	return 0;
 	PokemonAZNet model(1372, 11);
 	PokemonAZNet best_model(1372, 11);
 	int sim_games = 300;
@@ -38,7 +37,7 @@ int main() {
 			std::cout << "\rProgress: " << (i + 1) << " / " << sim_games << std::flush;
 		}*/
 		best_model->eval();
-		omp_set_num_threads(1);
+		omp_set_num_threads(6);
 		#pragma omp parallel
 		{
 			std::vector<std::tuple<std::vector<float>, std::vector<float>, float>> local_data;

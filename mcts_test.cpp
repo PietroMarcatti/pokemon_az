@@ -1,4 +1,5 @@
 #include "mcts_no_model.hpp"
+#include "pkmndriver.hpp"
 #include <chrono>
 using namespace pkmndriver::Gen1;
 

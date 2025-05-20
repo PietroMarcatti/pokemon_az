@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/pietro/repos/pokemon_az/out/build/linux-debug/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

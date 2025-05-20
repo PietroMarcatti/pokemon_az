@@ -1,0 +1,32 @@
+[
+{
+  "directory": "/home/pietro/repos/pokemon_az/build",
+  "command": "/usr/bin/c++  -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz -O3 -march=native -mtune=native -flto -fuse-linker-plugin -std=gnu++20 -o CMakeFiles/driver.dir/driver/pkmndriver.cpp.o -c /home/pietro/repos/pokemon_az/driver/pkmndriver.cpp",
+  "file": "/home/pietro/repos/pokemon_az/driver/pkmndriver.cpp",
+  "output": "CMakeFiles/driver.dir/driver/pkmndriver.cpp.o"
+},
+{
+  "directory": "/home/pietro/repos/pokemon_az/build",
+  "command": "/usr/bin/c++  -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz -O3 -march=native -mtune=native -flto -fuse-linker-plugin -std=gnu++20 -o CMakeFiles/example.dir/example.cpp.o -c /home/pietro/repos/pokemon_az/example.cpp",
+  "file": "/home/pietro/repos/pokemon_az/example.cpp",
+  "output": "CMakeFiles/example.dir/example.cpp.o"
+},
+{
+  "directory": "/home/pietro/repos/pokemon_az/build",
+  "command": "/usr/bin/c++ -DUSE_C10D_GLOO -DUSE_DISTRIBUTED -DUSE_RPC -DUSE_TENSORPIPE -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz -isystem /home/pietro/libs/libtorch/include -isystem /home/pietro/libs/libtorch/include/torch/csrc/api/include -O3 -march=native -mtune=native -flto -fuse-linker-plugin -std=gnu++20 -D_GLIBCXX_USE_CXX11_ABI=1 -fopenmp -o CMakeFiles/pkmnaz.dir/pkmnaz/model.cpp.o -c /home/pietro/repos/pokemon_az/pkmnaz/model.cpp",
+  "file": "/home/pietro/repos/pokemon_az/pkmnaz/model.cpp",
+  "output": "CMakeFiles/pkmnaz.dir/pkmnaz/model.cpp.o"
+},
+{
+  "directory": "/home/pietro/repos/pokemon_az/build",
+  "command": "/usr/bin/c++  -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz -O3 -march=native -mtune=native -flto -fuse-linker-plugin -std=gnu++20 -o CMakeFiles/mcts_analysis.dir/mcts_test.cpp.o -c /home/pietro/repos/pokemon_az/mcts_test.cpp",
+  "file": "/home/pietro/repos/pokemon_az/mcts_test.cpp",
+  "output": "CMakeFiles/mcts_analysis.dir/mcts_test.cpp.o"
+},
+{
+  "directory": "/home/pietro/repos/pokemon_az/build",
+  "command": "/usr/bin/c++ -DUSE_C10D_GLOO -DUSE_DISTRIBUTED -DUSE_RPC -DUSE_TENSORPIPE -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz -isystem /home/pietro/libs/libtorch/include -isystem /home/pietro/libs/libtorch/include/torch/csrc/api/include -O3 -march=native -mtune=native -flto -fuse-linker-plugin -std=gnu++20 -D_GLIBCXX_USE_CXX11_ABI=1 -fopenmp -o CMakeFiles/tester.dir/main.cpp.o -c /home/pietro/repos/pokemon_az/main.cpp",
+  "file": "/home/pietro/repos/pokemon_az/main.cpp",
+  "output": "CMakeFiles/tester.dir/main.cpp.o"
+}
+]

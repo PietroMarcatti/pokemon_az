@@ -7,6 +7,7 @@
 #include <iostream>
 #include <pkmn.h>
 
+
 pkmn_choice choose(
     pkmn_gen1_battle* battle,
     pkmn_psrng* random,

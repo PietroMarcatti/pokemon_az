@@ -1,16 +1,12 @@
 #pragma once
 #include "gen1battle.hpp"
 #include <unordered_map>
-#include <memory>
 #include <vector>
-#include <algorithm> 
 #include <random>
 #include <cmath>
 #include <ranges>
-#include <unordered_set>
 #include <stack>
 #include <numeric>
-#include <stdexcept>
 #include <cstddef>  // for size_t
 
 

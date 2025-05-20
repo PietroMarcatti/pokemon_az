@@ -2,17 +2,10 @@ cmake_minimum_required(VERSION 3.15)
 project(pkmndriver)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXE_LINKER_FLAGS "-no-pie")
 
-# Detect platform
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    message(STATUS "Configuring for Windows")
-    set(LIBTORCH_PATH "${PROJECT_SOURCE_DIR}/libtorch/windows")
-    set(PKMN_LIB "${PROJECT_SOURCE_DIR}/pkmn/pkmn_showdown.lib")  # Windows .lib
-else()
-    message(STATUS "Configuring for Linux")
-    set(LIBTORCH_PATH "${PROJECT_SOURCE_DIR}/libtorch/linux")
-    set(PKMN_LIB "${PROJECT_SOURCE_DIR}/pkmn/libpkmn_showdown.a")    # Linux .a
-endif()
+set(LIBTORCH_PATH "~/libs/libtorch")
+set(PKMN_LIB "${PROJECT_SOURCE_DIR}/pkmn/libpkmn_showdown.a")    # Linux .a
 
 # Torch setup
 set(CMAKE_PREFIX_PATH "${LIBTORCH_PATH}")
@@ -36,14 +29,9 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/pkmnaz
 )
 
-# Compiler flags (conditionally)
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O3")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -O2")
-elseif (MSVC)
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Zi")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2")
-endif()
+# Compiler flags
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O3")
+#set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -O2")
 
 # Libraries and targets
 add_library(driver STATIC driver/pkmndriver.cpp)
