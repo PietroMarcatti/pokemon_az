@@ -1,0 +1,169 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "mcts_analysis"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_executable",
+			"target_link_libraries",
+			"include_directories"
+		],
+		"files" : 
+		[
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 50,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 51,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 20,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-O3 -march=native -mtune=native -flto -fuse-linker-plugin -g -g -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/repos/pokemon_az"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/repos/pokemon_az/driver"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/repos/pokemon_az/driver/src"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/repos/pokemon_az/driver/src/gen1"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/repos/pokemon_az/driver/src/gen1/data"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/repos/pokemon_az/driver/src/gen1/samplers"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/repos/pokemon_az/pkmn"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/libs/libtorch"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "/home/pietro/repos/pokemon_az/pkmnaz"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					1
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "driver::@6890427a1f51a3e7e1df"
+		}
+	],
+	"id" : "mcts_analysis::@6890427a1f51a3e7e1df",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "-O3 -march=native -mtune=native -flto -fuse-linker-plugin -g -g -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "-no-pie",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "libdriver.a",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "/home/pietro/repos/pokemon_az/pkmn/libpkmn_showdown.a",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"name" : "mcts_analysis",
+	"nameOnDisk" : "mcts_analysis",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "mcts_test.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "EXECUTABLE"
+}

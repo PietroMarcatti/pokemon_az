@@ -1,15 +1,30 @@
+#include "pkmn.h"
 #include "pkmnaz/train.hpp"
+#include <omp.h>
 
 using namespace pkmndriver::Gen1;
 
 int main() {
 	const auto& sets = gen1RandBatsSets;
 	MCTS::initialize_log_cache();
-	for (int i = 0; i < 1; i++) {
-		//auto game_data = self_play_game(i, nullptr);  // vector of turns
-		test_normal(1);
-	}
 
+	int wins_counter = 0;
+    int loss_counter = 0;
+    int draws_counter = 0;
+	omp_set_num_threads(10);
+	//#pragma omp parallel for reduction(+:wins_counter, loss_counter, draws_counter)
+    for (int i = 0; i < 30; i++) {
+        uint8_t result = mcts_vs_random(1);
+        switch(pkmn_result_type(result)){
+            case PKMN_RESULT_WIN: wins_counter++; break;
+            case PKMN_RESULT_LOSE: loss_counter++; break;
+            case PKMN_RESULT_TIE: draws_counter++; break;
+            default: break;
+        }
+    }
+	std::cout << "\rWin/loss/tie: " << wins_counter << "/" << loss_counter << "/" << draws_counter<< "     " << std::flush;
+    
+    return 0;
 	PokemonAZNet model(1372, 11);
 	PokemonAZNet best_model(1372, 11);
 	int sim_games = 300;
@@ -37,18 +52,18 @@ int main() {
 			std::cout << "\rProgress: " << (i + 1) << " / " << sim_games << std::flush;
 		}*/
 		best_model->eval();
-		omp_set_num_threads(6);
+		
 		#pragma omp parallel
 		{
 			std::vector<std::tuple<std::vector<float>, std::vector<float>, float>> local_data;
 
 			#pragma omp for nowait
 			for (int i = 0; i < sim_games; ++i) {
-				auto game_data = self_play_game(i, nullptr);  // vector of turns
+				auto [game_data,turn_count] = self_play_game(i, nullptr);  // vector of turns
 				local_data.insert(local_data.end(), game_data.begin(), game_data.end());
 
 				int progress = ++progress_counter;
-				std::cout << "\rProgress: " << progress << " / " << sim_games << "\tTurns played: "<< game_data.size()/2 << std::flush;
+				std::cout << "\rProgress: " << progress << " / " << sim_games << "\tTurns played: "<< turn_count << "    " << std::flush;
 			}
 
 			// Critical section: safely merge thread-local data into global container
@@ -66,12 +81,12 @@ int main() {
 		//test_against_random(model, 100);
 		//
 		if (evaluate_models(model, best_model,100)) {
-			test_against_mcts(model, 50);
+			model_vs_mcts(model, 50);
 			std::cout << "New model better. Updating.\n";
 			best_model = model;
 			torch::save(best_model, "checkpoints/best.pt");
 		}
-		float win_rate = test_against_random(model, 100);
+		float win_rate = model_vs_random(model, 100);
 		std::string name = "checkpoints/"+std::to_string(iteration)+"-"+std::to_string(win_rate)+".pt";
 		torch::save(model, name);
 	}

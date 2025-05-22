@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <cstring>
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,7 +9,7 @@
 #include <pkmn.h>
 
 
-pkmn_choice choose(
+inline pkmn_choice choose(
     pkmn_gen1_battle* battle,
     pkmn_psrng* random,
     pkmn_player player,
@@ -38,16 +39,7 @@ int main(int argc, char** argv)
     // Preallocate a small buffer for the choice options throughout the battle
     pkmn_choice choices[9];
     auto start = std::chrono::high_resolution_clock::now();
-    pkmn_gen1_battle battle;
-    pkmn_result result;
-    for (int i = 0; i < 1000000; i++) {
-
-        // libpkmn doesn't provide any helpers for initializing the battle structure
-        // (the library is intended to be wrapped by something with a higher level
-        // API). This setup borrows the serialized state of the setup from the Zig
-        // example, though will end up with a different result because it's using a
-        // different RNG
-        battle = { {
+    pkmn_gen1_battle temp_battle = { {
            0x25, 0x01, 0xc4, 0x00, 0xc4, 0x00, 0xbc, 0x00, 0xe4, 0x00, 0x4f, 0x18, 0x0e, 0x30, 0x4b, 0x28,
            0x22, 0x18, 0x25, 0x01, 0x00, 0x01, 0x3a, 0x64, 0x19, 0x01, 0xca, 0x00, 0xb8, 0x00, 0xe4, 0x00,
            0xc6, 0x00, 0x7e, 0x08, 0x53, 0x18, 0xa3, 0x20, 0x44, 0x20, 0x19, 0x01, 0x00, 0x04, 0x88, 0x64,
@@ -73,6 +65,16 @@ int main(int argc, char** argv)
            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x00,
            0x00, 0x00, 0x00, 0x00, 0x00, 0x2e, 0xdb, 0x7d, 0x61, 0xcb, 0xba, 0x0d, 0x1e, 0x7e, 0x9e, 0x00,
         } };
+    pkmn_gen1_battle battle;
+    pkmn_result result;
+    for (int i = 0; i < 1000000; i++) {
+
+        // libpkmn doesn't provide any helpers for initializing the battle structure
+        // (the library is intended to be wrapped by something with a higher level
+        // API). This setup borrows the serialized state of the setup from the Zig
+        // example, though will end up with a different result because it's using a
+        // different RNG
+        memcpy(&battle, &temp_battle, sizeof(battle));
 
         // Preallocate a buffer for protocol message logs - PKMN_LOGS_SIZE is
         // guaranteed to be large enough for a single update. This will only be

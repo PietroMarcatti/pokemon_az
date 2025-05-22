@@ -30,8 +30,8 @@ include_directories(
 )
 
 # Compiler flags
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O3")
-#set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -O2")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use")
 
 # Libraries and targets
 add_library(driver STATIC driver/pkmndriver.cpp)

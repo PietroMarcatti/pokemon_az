@@ -1,6 +1,7 @@
 #include <torch/torch.h>
 #include <filesystem>
 #include <omp.h>
+#include "gen1battle.hpp"
 #include "mcts.hpp"
 
 
@@ -54,7 +55,7 @@ int sample_weighted(const std::vector<float>& weights) {
 	return dist(gen);
 }
 
-torch::Tensor loss_fn(torch::Tensor policy_pred, torch::Tensor policy_target,
+std::pair<torch::Tensor, torch::Tensor> loss_fn(torch::Tensor policy_pred, torch::Tensor policy_target,
 	torch::Tensor value_pred, torch::Tensor value_target) {
 
 	auto policy_log_probs = torch::log_softmax(policy_pred, 1);
@@ -64,16 +65,16 @@ torch::Tensor loss_fn(torch::Tensor policy_pred, torch::Tensor policy_target,
 		torch::nn::functional::KLDivFuncOptions().reduction(torch::kBatchMean)
 	);
 
-	auto value_loss = torch::mse_loss(value_pred.squeeze(), value_target);
-	return policy_loss + value_loss;
-}
+	auto value_loss = torch::nn::functional::smooth_l1_loss(value_pred.squeeze(), value_target);
 
+	return {policy_loss, value_loss};
+}
 
 
 std::vector<pkmn_choice> pkmn_choices = { 0, 1, 10, 14, 18, 22, 26, 5, 9, 13, 17 };
 
 
-std::vector<std::tuple<std::vector<float>, std::vector<float>, int>> self_play_game(int game_index, PokemonAZNet* model=nullptr) {
+std::pair<std::vector<std::tuple<std::vector<float>, std::vector<float>, int>>,int> self_play_game(int game_index, PokemonAZNet* model=nullptr) {
 	Gen1Battle battle = generateRandomBattle(game_index);
 	MCTS mcts;
 	battle.init();
@@ -119,8 +120,9 @@ std::vector<std::tuple<std::vector<float>, std::vector<float>, int>> self_play_g
 	for (auto& record : game_data) {
 		std::get<2>(record) = reward;
 	}
+	//print_battle_result(battle.battle_, battle.result);
 
-	return game_data;
+	return {game_data,turn(battle.battle_)};
 }
 
 
@@ -132,36 +134,53 @@ void train_model(PokemonAZNet& model,
 	torch::optim::Adam optimizer(model->parameters(), lr);
 	for (int epoch = 0; epoch < epochs; ++epoch) {
 		auto start = std::chrono::high_resolution_clock::now();
-		float total_loss = 0.0;
-		for (const auto& [state_vec, policy_target_vec, value_target] : training_data) {
-			assert(state_vec.size() == 1372);
-			assert(policy_target_vec.size() == 11);
-			assert(!std::isnan(value_target) && !std::isinf(value_target));
+		float total_policy=0.0, total_value = 0.0, total_loss=0.0;
+		const int batch_size = 64;
+		for (size_t i = 0; i<training_data.size(); i+=batch_size) {
+			//assert(state_vec.size() == 1372);
+			//assert(policy_target_vec.size() == 11);
+			//assert(!std::isnan(value_target) && !std::isinf(value_target));
 
-			assert(std::none_of(state_vec.begin(), state_vec.end(), [](float x){ return std::isnan(x) || std::isinf(x); }));
-			assert(std::none_of(policy_target_vec.begin(), policy_target_vec.end(), [](float x){ return std::isnan(x) || std::isinf(x); }));
-			auto state = torch::tensor(state_vec, torch::kFloat32).unsqueeze(0);
-			auto policy_target = torch::tensor(policy_target_vec, torch::kFloat32).unsqueeze(0);
-			auto value_target_tensor = torch::tensor( value_target , torch::kFloat32);
+			//assert(std::none_of(state_vec.begin(), state_vec.end(), [](float x){ return std::isnan(x) || std::isinf(x); }));
+			//assert(std::none_of(policy_target_vec.begin(), policy_target_vec.end(), [](float x){ return std::isnan(x) || std::isinf(x); }));
+			auto end = std::min(i+batch_size, training_data.size());
+			auto batch = std::vector(training_data.begin()+i, training_data.begin()+end);
+			std::vector<torch::Tensor> states, policy_targets, value_targets;
+			for (const auto& [state_vec, policy_vec, value_scalar] : batch) {
+				states.push_back(torch::tensor(state_vec,torch::kFloat32));
+				policy_targets.push_back(torch::tensor(policy_vec,torch::kFloat32));
+				value_targets.push_back(torch::tensor(value_scalar,torch::kFloat32));
+
+			}
+			auto state_batch = torch::stack(states);
+			auto policy_target_batch= torch::stack(policy_targets);
+			auto value_target_batch = torch::stack(value_targets);
 
 			optimizer.zero_grad();
 			try {
-				auto [policy_pred, value_pred] = model->forward(state);
-				auto loss = loss_fn(policy_pred, policy_target, value_pred, value_target_tensor);
+				auto [policy_pred, value_pred] = model->forward(state_batch);
+				auto [policy_loss, value_loss] = loss_fn(policy_pred, policy_target_batch, value_pred, value_target_batch);
+				auto loss = policy_loss+value_loss;
 				loss.backward();
 				optimizer.step();
 
-				total_loss += loss.item<float>();
+				total_policy += policy_loss.item<float>();
+				total_value += value_loss.item<float>();
+				total_loss += policy_loss.item<float>();
+				total_loss += value_loss.item<float>();
 			}
 			catch (const c10::Error& e) {
 				std::cerr << "LibTorch error: " << e.msg() << std::endl;
 				throw;
 			}
 		}
-		float avg_loss = total_loss / training_data.size();
+		int divider = training_data.size() / batch_size+ (training_data.size() % batch_size) > 0;
+		float avg_loss = total_loss / divider;
+		float avg_policy = total_policy / divider;
+		float avg_value = total_value / divider;
 		auto stop = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-		std::cout << "Epoch " << epoch + 1 << ", Loss: " << avg_loss << "\tEpoch time: " << duration.count()/1000000.0 << " seconds"<< std::endl;;
+		std::cout << "Epoch " << epoch + 1 << ", Policy Loss: " << avg_policy<< ", Value Loss: " << avg_value << "\tEpoch time: " << duration.count()/1000000.0 << " seconds"<< std::endl;;
 	}
 	torch::save(model, "checkpoints/latest.pt");
 }
@@ -236,10 +255,10 @@ bool evaluate_models(PokemonAZNet& new_model, PokemonAZNet& best_model, int num_
 	}
 
 	std::cout << "New: " << new_wins << ", Best: " << best_wins << ", Draws: " << draws << "\n";
-	return new_wins > best_wins;
+	return new_wins > best_wins*1.2f;
 }
 
-float test_against_random(PokemonAZNet& model, int num_games = 100) {
+float model_vs_random(PokemonAZNet& model, int num_games = 100) {
 	model->eval();
 	int new_wins = 0, best_wins = 0, draws = 0;
 
@@ -304,10 +323,11 @@ float test_against_random(PokemonAZNet& model, int num_games = 100) {
 	return static_cast<float>(new_wins) / num_games;
 }
 
-void test_against_mcts(PokemonAZNet& model, int num_games = 100) {
+void model_vs_mcts(PokemonAZNet& model, int num_games = 100) {
 	model->eval();
 	int new_wins = 0, best_wins = 0, draws = 0;
 
+	#pragma omp parallel for
 	for (int i = 0; i < num_games; ++i) {
 		Gen1Battle battle = generateRandomBattle(i);
 		MCTS mcts = MCTS();
@@ -371,7 +391,7 @@ void test_against_mcts(PokemonAZNet& model, int num_games = 100) {
 	std::cout << "Model: " << new_wins << ", MCTS: " << best_wins << ", Draws: " << draws << "\n";
 }
 
-void test_normal(int battle_seed) {
+uint8_t mcts_vs_random(int battle_seed) {
 	Gen1Battle battle;
 	int total_turns = 0;
 	auto start = std::chrono::high_resolution_clock::now();
@@ -400,6 +420,6 @@ void test_normal(int battle_seed) {
 	auto stop = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
 	//std::cout << battle_seed + 1 << " Execution time: " << duration.count() / 1000000.0 << "s : \t";
-	battle.print_result();
+	return battle.result;
 	//std::cout << "Turn/second: " << total_turns / (duration.count() / 1000000.0) << " t/s\n";
 }
