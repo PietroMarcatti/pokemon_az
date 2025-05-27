@@ -1,4 +1,5 @@
 .vscode/
 .cache/
 old_code/
+out/
 compile_commands.json
