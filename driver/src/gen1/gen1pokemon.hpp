@@ -52,9 +52,6 @@ namespace pkmndriver {
 			constexpr void calc_stats() {
 				bytes[0] = (uint8_t)calc_hp(*this);
 				bytes[1] = static_cast<uint8_t>(calc_hp(*this) >> 8);
-				if (bytes[0] == 0 && bytes[1]== 0) {
-					std::cout<<"HP calcolata erroneamente"<<std::endl;
-				}
 				bytes[18] = (uint8_t)bytes[0];
 				bytes[19] = bytes[1];
 				bytes[2] = (uint8_t)calc_other_stat(*this, ATK);

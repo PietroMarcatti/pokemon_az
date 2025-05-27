@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -march=native -mtune=native -flto -fuse-linker-plugin -no-pie -Wl,--dependency-file=CMakeFiles/example.dir/link.d CMakeFiles/example.dir/example.cpp.o -o example  libdriver.a /home/pietro/repos/pokemon_az/pkmn/libpkmn_showdown.a

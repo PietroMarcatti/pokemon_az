@@ -3,26 +3,7 @@
 #include <omp.h>
 #include "gen1battle.hpp"
 #include "mcts.hpp"
-
-
-
-torch::Tensor masked_softmax(const torch::Tensor& logits, const std::vector<bool>& mask) {
-	torch::Tensor masked = logits.clone();
-	for (size_t i = 0; i < mask.size(); ++i) {
-		if (!mask[i]) {
-			masked[i] = -std::numeric_limits<float>::infinity();
-		}
-	}
-	return torch::softmax(masked, -1);
-}
-
-torch::Tensor cross_entropy_loss(const torch::Tensor& logits, const torch::Tensor& target) {
-	return torch::nn::functional::cross_entropy(logits, target);
-}
-
-torch::Tensor mse_loss(const torch::Tensor& prediction, const torch::Tensor& target) {
-	return torch::mse_loss(prediction.squeeze(), target);
-}
+#include "pkmn.h"
 
 void save_checkpoint(const std::string& path, torch::nn::Module& model, torch::optim::Optimizer& optimizer, int epoch, float loss) {
 	torch::serialize::OutputArchive archive;
@@ -50,19 +31,13 @@ bool load_checkpoint(const std::string& path, torch::nn::Module& model, torch::o
 	return true;
 }
 
-int sample_weighted(const std::vector<float>& weights) {
-	std::discrete_distribution<> dist(weights.begin(), weights.end());
-	return dist(gen);
-}
-
 std::pair<torch::Tensor, torch::Tensor> loss_fn(torch::Tensor policy_pred, torch::Tensor policy_target,
 	torch::Tensor value_pred, torch::Tensor value_target) {
 
 	auto policy_log_probs = torch::log_softmax(policy_pred, 1);
-	auto policy_loss = torch::nn::functional::kl_div(
-		policy_log_probs,
-		policy_target,
-		torch::nn::functional::KLDivFuncOptions().reduction(torch::kBatchMean)
+	auto policy_loss = torch::nn::functional::cross_entropy(
+		policy_pred,
+		policy_target
 	);
 
 	auto value_loss = torch::nn::functional::smooth_l1_loss(value_pred.squeeze(), value_target);
@@ -85,20 +60,12 @@ std::pair<std::vector<std::tuple<std::vector<float>, std::vector<float>, int>>,i
 	while (!pkmn_result_type(battle.result)) {
 		// --- Player 1 (p1_perspective = true)
 		std::vector<float> state_p1 = extract_game_state(battle.battle_,true);
-		assert(state_p1.size() == 1372 && "State P1 has incorrect size");
-
 		std::vector<float> policy_p1 = mcts.get_action_distribution(battle, true, model);
-		assert(policy_p1.size() == pkmn_choices.size() && "Policy P1 size mismatch");
-
 		int choice_p1 = sample_with_weights(pkmn_choices, policy_p1);
 
 		// --- Player 2 (p1_perspective = false)
 		std::vector<float> state_p2 = extract_game_state(battle.battle_,false);
-		assert(state_p2.size() == 1372 && "State P2 has incorrect size");
-
 		std::vector<float> policy_p2 = mcts.create_action_distribution(false, mcts.compute_beta(mcts.t));
-		assert(policy_p2.size() == pkmn_choices.size() && "Policy P2 size mismatch");
-
 		int choice_p2 = sample_with_weights(pkmn_choices, policy_p2);
 
 		// --- Play turn
@@ -127,22 +94,17 @@ std::pair<std::vector<std::tuple<std::vector<float>, std::vector<float>, int>>,i
 
 
 void train_model(PokemonAZNet& model,
-	const std::vector<std::tuple<std::vector<float>, std::vector<float>, float>>& training_data,
-	int epochs = 5, float lr = 0.001) {
+	std::vector<std::tuple<std::vector<float>, std::vector<float>, float>>& training_data,
+	int epochs = 5, float lr = 0.0003) {
 
 	model->train();
 	torch::optim::Adam optimizer(model->parameters(), lr);
+
 	for (int epoch = 0; epoch < epochs; ++epoch) {
 		auto start = std::chrono::high_resolution_clock::now();
 		float total_policy=0.0, total_value = 0.0, total_loss=0.0;
 		const int batch_size = 64;
 		for (size_t i = 0; i<training_data.size(); i+=batch_size) {
-			//assert(state_vec.size() == 1372);
-			//assert(policy_target_vec.size() == 11);
-			//assert(!std::isnan(value_target) && !std::isinf(value_target));
-
-			//assert(std::none_of(state_vec.begin(), state_vec.end(), [](float x){ return std::isnan(x) || std::isinf(x); }));
-			//assert(std::none_of(policy_target_vec.begin(), policy_target_vec.end(), [](float x){ return std::isnan(x) || std::isinf(x); }));
 			auto end = std::min(i+batch_size, training_data.size());
 			auto batch = std::vector(training_data.begin()+i, training_data.begin()+end);
 			std::vector<torch::Tensor> states, policy_targets, value_targets;
@@ -157,22 +119,24 @@ void train_model(PokemonAZNet& model,
 			auto value_target_batch = torch::stack(value_targets);
 
 			optimizer.zero_grad();
-			try {
-				auto [policy_pred, value_pred] = model->forward(state_batch);
-				auto [policy_loss, value_loss] = loss_fn(policy_pred, policy_target_batch, value_pred, value_target_batch);
-				auto loss = policy_loss+value_loss;
-				loss.backward();
-				optimizer.step();
+			auto [policy_pred, value_pred] = model->forward(state_batch);
+			// 1. Mask invalid actions
+			auto mask = (policy_target_batch != 0.0f).to(torch::kBool);
+			auto masked_policy_pred = policy_pred.masked_fill(~mask, -1e12);  // Mask BEFORE softmax
 
-				total_policy += policy_loss.item<float>();
-				total_value += value_loss.item<float>();
-				total_loss += policy_loss.item<float>();
-				total_loss += value_loss.item<float>();
-			}
-			catch (const c10::Error& e) {
-				std::cerr << "LibTorch error: " << e.msg() << std::endl;
-				throw;
-			}
+			// 2. Compute log-probabilities
+			auto policy_log_probs = torch::softmax(masked_policy_pred, 1);
+
+			// 3. Debug: Print log_softmax output (should NOT have -1e9)
+			auto [policy_loss, value_loss] = loss_fn(policy_log_probs, policy_target_batch, value_pred, value_target_batch);
+			auto loss = policy_loss+0.5*value_loss;
+			loss.backward();
+			optimizer.step();
+
+			total_policy += policy_loss.item<float>();
+			total_value += value_loss.item<float>();
+			total_loss += policy_loss.item<float>();
+			total_loss += value_loss.item<float>();
 		}
 		int divider = training_data.size() / batch_size+ (training_data.size() % batch_size) > 0;
 		float avg_loss = total_loss / divider;
@@ -185,13 +149,25 @@ void train_model(PokemonAZNet& model,
 	torch::save(model, "checkpoints/latest.pt");
 }
 
+pkmn_choice model_choose_move(Gen1Battle battle, PokemonAZNet& model, pkmn_player player){
+	pkmn_choice choices[9];
+	auto state = torch::tensor(extract_game_state(battle.battle_,true), torch::kFloat32).unsqueeze(0);
+	auto [logits, _1] = model->forward(state);
+	pkmn_choice num_1 = player == PKMN_PLAYER_P1 ? battle.get_choices_p1(choices) : battle.get_choices_p2(choices);
+	std::vector<int64_t> choice_vector;
+	for (int j = 0; j < num_1; ++j) {
+		choice_vector.push_back(choice_to_index(choices[j]));
+	}
+	auto squeezed_logits = logits.squeeze(0);
+	auto sampled = sample_from_logits(squeezed_logits, choice_vector);
+	return index_to_choice(sampled);
+}
 
 bool evaluate_models(PokemonAZNet& new_model, PokemonAZNet& best_model, int num_games = 25) {
 	new_model->eval();
 	best_model->eval();
 	int new_wins = 0, best_wins = 0, draws = 0;
-	//omp_set_num_threads(10);
-	//#pragma omp parallel for reduction(+:new_wins) reduction(+:draws) reduction(+:best_wins)
+
 	for (int i = 0; i < num_games; ++i) {
 		Gen1Battle battle = generateRandomBattle(i);
 		battle.init();
@@ -199,51 +175,8 @@ bool evaluate_models(PokemonAZNet& new_model, PokemonAZNet& best_model, int num_
 		pkmn_choice choices1[9], choices2[9];
 		int turn = 0;
 		while (!pkmn_result_type(battle.result)) {
-
-			auto state_new = torch::tensor(extract_game_state(battle.battle_,true), torch::kFloat32).unsqueeze(0);
-			auto state_best = torch::tensor(extract_game_state(battle.battle_,false), torch::kFloat32).unsqueeze(0);
-
-			auto [logits_new, _1] = new_model->forward(state_new);
-			auto [logits_best, _2] = best_model->forward(state_best);
-
-			auto num_1 = battle.get_choices_p1(choices1);
-			auto num_2 = battle.get_choices_p2(choices2);
-			std::vector<int64_t> v1;
-			for (int j = 0; j < num_1; ++j) {
-				v1.push_back(choice_to_index(choices1[j]));
-			}
-			std::vector<int64_t> v2;
-			for (int j = 0; j < num_2; ++j) {
-				v2.push_back(choice_to_index(choices2[j]));
-			}
-
-			auto squeezed_logits_new = logits_new.squeeze(0);
-			auto squeezed_logits_best = logits_best.squeeze(0);
-
-			auto sampled_new = sample_from_logits(squeezed_logits_new, v1);
-			auto sampled_best = sample_from_logits(squeezed_logits_best, v2);
-
-			auto c1 = index_to_choice(sampled_new);
-			auto c2 = index_to_choice(sampled_best);
-			bool found1=false, found2=false;
-			for (int j=0; j<num_1 && !found1; j++) {
-				found1= choices1[j] == c1;
-			}
-			for (int j=0; j<num_2 && !found2; j++) {
-				found2= choices2[j] == c2;
-			}
-			if (!found1 && !found2) {
-				std::cout<<"Player 1 valid moves were: \n";
-				for (int j=0; j<num_1; j++) {
-					std::cout<<choices1[j]<<" ";
-				}
-				std::cout<<std::endl<<"Selected move: "<<c1<<"\n";
-				std::cout<<"Player 2 valid moves were: \n";
-				for (int j=0; j<num_2; j++) {
-					std::cout<<choices2[j]<<" ";
-				}
-				std::cout<<"\nSelected move: "<<c2<<std::endl;
-			}
+			auto c1 = model_choose_move(battle, new_model, PKMN_PLAYER_P1);
+			auto c2 = model_choose_move(battle, best_model, PKMN_PLAYER_P2);
 			battle.play_turn(c1, c2);
 		}
 
@@ -261,7 +194,6 @@ bool evaluate_models(PokemonAZNet& new_model, PokemonAZNet& best_model, int num_
 float model_vs_random(PokemonAZNet& model, int num_games = 100) {
 	model->eval();
 	int new_wins = 0, best_wins = 0, draws = 0;
-
 	for (int i = 0; i < num_games; ++i) {
 		Gen1Battle battle = generateRandomBattle(i);
 		battle.init();
@@ -269,27 +201,11 @@ float model_vs_random(PokemonAZNet& model, int num_games = 100) {
 		pkmn_choice choices1[9], choices2[9];
 
 		while (!pkmn_result_type(battle.result)) {
-			auto state_new = torch::from_blob(extract_game_state(battle.battle_,true).data(), { 1, 1372 }).clone();
-
-			auto [logits_new, _1] = model->forward(state_new);
-
-			auto num_1 = battle.get_choices_p1(choices1);
-			auto num_2 = battle.get_choices_p2(choices2);
-			std::vector<int64_t> v1;
-			for (int j = 0; j < num_1; ++j) {
-				v1.push_back(choice_to_index(choices1[j]));
-			}
-			std::vector<int64_t> v2;
-			for (int j = 0; j < num_2; ++j) {
-				v2.push_back(choice_to_index(choices2[j]));
-			}
-
-			auto squeezed_logits_new = logits_new.squeeze(0);
-
-			auto sampled_new = sample_from_logits(squeezed_logits_new, v1);
-
-			auto c1 = index_to_choice(sampled_new);
-			auto c2 = choices2[(uint64_t)pkmn_psrng_next(&battle.random) * num_2 / 0x100000000];
+			pkmn_choice c1 = model_choose_move(battle,model,PKMN_PLAYER_P1);
+			uint8_t num_1 = battle.get_choices_p1(choices1);
+			uint8_t num_2 = battle.get_choices_p2(choices2);
+			pkmn_choice c2 = choices2[(uint64_t)pkmn_psrng_next(&battle.random) * num_2 / 0x100000000];
+			
 			bool found1=false, found2=false;
 			for (int j=0; j<num_1 && !found1; j++) {
 				found1= choices1[j] == c1;
@@ -311,7 +227,6 @@ float model_vs_random(PokemonAZNet& model, int num_games = 100) {
 			}
 			battle.play_turn(c1, c2);
 		}
-
 		switch (battle.result) {
 		case 1: new_wins++; break;
 		case 2: best_wins++; break;
@@ -336,51 +251,14 @@ void model_vs_mcts(PokemonAZNet& model, int num_games = 100) {
 		pkmn_choice choices1[9], choices2[9];
 
 		while (!pkmn_result_type(battle.result)) {
-			auto state_new = torch::from_blob(extract_game_state(battle.battle_,true).data(), { 1, 1372 }).clone();
+			pkmn_choice c1 = model_choose_move(battle, model, PKMN_PLAYER_P1);
 
-			auto [logits_new, _1] = model->forward(state_new);
-
-			auto num_1 = battle.get_choices_p1(choices1);
 			auto num_2 = battle.get_choices_p2(choices2);
-			std::vector<int64_t> v1;
-			for (int j = 0; j < num_1; ++j) {
-				v1.push_back(choice_to_index(choices1[j]));
-			}
-			std::vector<int64_t> v2;
-			for (int j = 0; j < num_2; ++j) {
-				v2.push_back(choice_to_index(choices2[j]));
-			}
-
-			auto squeezed_logits_new = logits_new.squeeze(0);
-
-			auto sampled_new = sample_from_logits(squeezed_logits_new, v1);
-
-			auto c1 = index_to_choice(sampled_new);
 			std::vector<float> c2_weights = mcts.get_action_distribution(battle, false);
 			std::discrete_distribution<> c1_dist(c2_weights.begin(), c2_weights.end());
 			auto c2 = index_to_choice(c1_dist(MCTSNode::rd));
-			bool found1=false, found2=false;
-			for (int j=0; j<num_1 && !found1; j++) {
-				found1= choices1[j] == c1;
-			}
-			for (int j=0; j<num_2 && !found2; j++) {
-				found2= choices2[j] == c2;
-			}
-			if (!found1 && !found2) {
-				std::cout<<"Player 1 valid moves were: \n";
-				for (int j=0; j<num_1; j++) {
-					std::cout<<choices1[j]<<" ";
-				}
-				std::cout<<std::endl<<"Selected move: "<<c1<<"\n";
-				std::cout<<"Player 2 valid moves were: \n";
-				for (int j=0; j<num_2; j++) {
-					std::cout<<choices2[j]<<" ";
-				}
-				std::cout<<"\nSelected move: "<<c2<<std::endl;
-			}
 			battle.play_turn(c1, c2);
 		}
-
 		switch (battle.result) {
 		case 1: new_wins++; break;
 		case 2: best_wins++; break;

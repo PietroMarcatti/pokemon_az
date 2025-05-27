@@ -1,5 +1,4 @@
-﻿// FinalPkmn.h : Include file for standard system include files,
-// or project specific include files.
+﻿// Entry point to the pkmn engine driver code
 
 #pragma once
 
@@ -15,6 +14,3 @@
 #include "gen1side.hpp"
 #include "gen1battle.hpp"
 #include "agent.hpp"
-
-
-// TODO: Reference additional headers your program requires here.

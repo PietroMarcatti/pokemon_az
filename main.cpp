@@ -8,26 +8,17 @@ int main() {
 	const auto& sets = gen1RandBatsSets;
 	MCTS::initialize_log_cache();
 
+	
 	int wins_counter = 0;
     int loss_counter = 0;
     int draws_counter = 0;
 	omp_set_num_threads(10);
-	//#pragma omp parallel for reduction(+:wins_counter, loss_counter, draws_counter)
-    for (int i = 0; i < 30; i++) {
-        uint8_t result = mcts_vs_random(1);
-        switch(pkmn_result_type(result)){
-            case PKMN_RESULT_WIN: wins_counter++; break;
-            case PKMN_RESULT_LOSE: loss_counter++; break;
-            case PKMN_RESULT_TIE: draws_counter++; break;
-            default: break;
-        }
-    }
-	std::cout << "\rWin/loss/tie: " << wins_counter << "/" << loss_counter << "/" << draws_counter<< "     " << std::flush;
-    
-    return 0;
+	
+	
 	PokemonAZNet model(1372, 11);
 	PokemonAZNet best_model(1372, 11);
 	int sim_games = 300;
+	
 
 	if (!std::filesystem::exists("checkpoints")) std::filesystem::create_directory("checkpoints");
 	if (std::filesystem::exists("checkpoints/latest.pt")) torch::load(model, "checkpoints/latest.pt");
@@ -80,13 +71,13 @@ int main() {
 		train_model(model, training_data);
 		//test_against_random(model, 100);
 		//
-		if (evaluate_models(model, best_model,100)) {
+		if (evaluate_models(model, best_model,200)) {
 			model_vs_mcts(model, 50);
 			std::cout << "New model better. Updating.\n";
 			best_model = model;
 			torch::save(best_model, "checkpoints/best.pt");
 		}
-		float win_rate = model_vs_random(model, 100);
+		float win_rate = model_vs_random(model, 1000);
 		std::string name = "checkpoints/"+std::to_string(iteration)+"-"+std::to_string(win_rate)+".pt";
 		torch::save(model, name);
 	}

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <algorithm>
-
 #include "gen1pokemon.hpp"
 
 namespace pkmndriver {

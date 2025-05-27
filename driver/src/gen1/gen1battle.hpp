@@ -3,7 +3,6 @@
 #include <bit>
 #include <cassert>
 #include <iostream>
-#include <fstream>
 
 #include "pkmn.h"
 #include "rangeview.hpp"

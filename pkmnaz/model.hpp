@@ -117,12 +117,13 @@ inline std::vector<float> extract_game_state(pkmn_gen1_battle& battle_, bool p1_
 }
 
 struct PokemonAZNetImpl : torch::nn::Module {
-	torch::nn::Linear fc1{ nullptr }, fc2{ nullptr };
+	torch::nn::Linear fc1{ nullptr }, fc2{ nullptr }, fc3{ nullptr };
 	torch::nn::Linear policy_head{ nullptr }, value_head{ nullptr };
 
 	PokemonAZNetImpl(int64_t input_dim, int64_t output_dim) {
 		fc1 = register_module("fc1", torch::nn::Linear(input_dim, 256));
 		fc2 = register_module("fc2", torch::nn::Linear(256, 256));
+		fc3 = register_module("fc3", torch::nn::Linear(256, 256));
 		policy_head = register_module("policy_head", torch::nn::Linear(256, output_dim));
 		value_head = register_module("value_head", torch::nn::Linear(256, 1));
 	}
@@ -130,7 +131,7 @@ struct PokemonAZNetImpl : torch::nn::Module {
 	std::pair<torch::Tensor, torch::Tensor> forward(torch::Tensor x) {
 		x = torch::relu(fc1->forward(x));
 		x = torch::relu(fc2->forward(x));
-		auto policy_logits = policy_head->forward(x);
+		auto policy_logits = policy_head->forward(fc3->forward(x));
 		auto value = torch::tanh(value_head->forward(x));
 		return { policy_logits, value };
 	}

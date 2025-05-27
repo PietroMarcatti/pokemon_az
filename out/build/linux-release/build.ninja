@@ -52,7 +52,7 @@ build cmake_object_order_depends_target_driver: phony || .
 build CMakeFiles/driver.dir/driver/pkmndriver.cpp.o: CXX_COMPILER__driver_unscanned_Release /home/pietro/repos/pokemon_az/driver/pkmndriver.cpp || cmake_object_order_depends_target_driver
   CONFIG = Release
   DEP_FILE = CMakeFiles/driver.dir/driver/pkmndriver.cpp.o.d
-  FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20
+  FLAGS = -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20
   INCLUDES = -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz
   OBJECT_DIR = CMakeFiles/driver.dir
   OBJECT_FILE_DIR = CMakeFiles/driver.dir/driver
@@ -67,7 +67,7 @@ build CMakeFiles/driver.dir/driver/pkmndriver.cpp.o: CXX_COMPILER__driver_unscan
 
 build libdriver.a: CXX_STATIC_LIBRARY_LINKER__driver_Release CMakeFiles/driver.dir/driver/pkmndriver.cpp.o
   CONFIG = Release
-  LANGUAGE_COMPILE_FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
+  LANGUAGE_COMPILE_FLAGS = -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
   OBJECT_DIR = CMakeFiles/driver.dir
   POST_BUILD = :
   PRE_LINK = :
@@ -86,7 +86,7 @@ build cmake_object_order_depends_target_example: phony || cmake_object_order_dep
 build CMakeFiles/example.dir/example.cpp.o: CXX_COMPILER__example_unscanned_Release /home/pietro/repos/pokemon_az/example.cpp || cmake_object_order_depends_target_example
   CONFIG = Release
   DEP_FILE = CMakeFiles/example.dir/example.cpp.o.d
-  FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20
+  FLAGS = -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20
   INCLUDES = -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz
   OBJECT_DIR = CMakeFiles/example.dir
   OBJECT_FILE_DIR = CMakeFiles/example.dir
@@ -102,7 +102,7 @@ build CMakeFiles/example.dir/example.cpp.o: CXX_COMPILER__example_unscanned_Rele
 build example: CXX_EXECUTABLE_LINKER__example_Release CMakeFiles/example.dir/example.cpp.o | libdriver.a /home/pietro/repos/pokemon_az/pkmn/libpkmn_showdown.a || libdriver.a
   CONFIG = Release
   DEP_FILE = CMakeFiles/example.dir/link.d
-  FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
+  FLAGS = -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
   LINK_FLAGS = -no-pie -Wl,--dependency-file=CMakeFiles/example.dir/link.d
   LINK_LIBRARIES = libdriver.a  /home/pietro/repos/pokemon_az/pkmn/libpkmn_showdown.a
   OBJECT_DIR = CMakeFiles/example.dir
@@ -124,7 +124,7 @@ build CMakeFiles/pkmnaz.dir/pkmnaz/model.cpp.o: CXX_COMPILER__pkmnaz_unscanned_R
   CONFIG = Release
   DEFINES = -DUSE_C10D_GLOO -DUSE_DISTRIBUTED -DUSE_RPC -DUSE_TENSORPIPE
   DEP_FILE = CMakeFiles/pkmnaz.dir/pkmnaz/model.cpp.o.d
-  FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20 -D_GLIBCXX_USE_CXX11_ABI=1 -fopenmp
+  FLAGS = -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20 -D_GLIBCXX_USE_CXX11_ABI=1 -fopenmp
   INCLUDES = -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz -isystem /home/pietro/libs/libtorch/include -isystem /home/pietro/libs/libtorch/include/torch/csrc/api/include
   OBJECT_DIR = CMakeFiles/pkmnaz.dir
   OBJECT_FILE_DIR = CMakeFiles/pkmnaz.dir/pkmnaz
@@ -139,49 +139,12 @@ build CMakeFiles/pkmnaz.dir/pkmnaz/model.cpp.o: CXX_COMPILER__pkmnaz_unscanned_R
 
 build libpkmnaz.a: CXX_STATIC_LIBRARY_LINKER__pkmnaz_Release CMakeFiles/pkmnaz.dir/pkmnaz/model.cpp.o || libdriver.a
   CONFIG = Release
-  LANGUAGE_COMPILE_FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
+  LANGUAGE_COMPILE_FLAGS = -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
   OBJECT_DIR = CMakeFiles/pkmnaz.dir
   POST_BUILD = :
   PRE_LINK = :
   TARGET_FILE = libpkmnaz.a
   TARGET_PDB = pkmnaz.a.dbg
-
-# =============================================================================
-# Object build statements for EXECUTABLE target mcts_analysis
-
-
-#############################################
-# Order-only phony target for mcts_analysis
-
-build cmake_object_order_depends_target_mcts_analysis: phony || cmake_object_order_depends_target_driver
-
-build CMakeFiles/mcts_analysis.dir/mcts_test.cpp.o: CXX_COMPILER__mcts_analysis_unscanned_Release /home/pietro/repos/pokemon_az/mcts_test.cpp || cmake_object_order_depends_target_mcts_analysis
-  CONFIG = Release
-  DEP_FILE = CMakeFiles/mcts_analysis.dir/mcts_test.cpp.o.d
-  FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20
-  INCLUDES = -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz
-  OBJECT_DIR = CMakeFiles/mcts_analysis.dir
-  OBJECT_FILE_DIR = CMakeFiles/mcts_analysis.dir
-
-
-# =============================================================================
-# Link build statements for EXECUTABLE target mcts_analysis
-
-
-#############################################
-# Link the executable mcts_analysis
-
-build mcts_analysis: CXX_EXECUTABLE_LINKER__mcts_analysis_Release CMakeFiles/mcts_analysis.dir/mcts_test.cpp.o | libdriver.a /home/pietro/repos/pokemon_az/pkmn/libpkmn_showdown.a || libdriver.a
-  CONFIG = Release
-  DEP_FILE = CMakeFiles/mcts_analysis.dir/link.d
-  FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
-  LINK_FLAGS = -no-pie -Wl,--dependency-file=CMakeFiles/mcts_analysis.dir/link.d
-  LINK_LIBRARIES = libdriver.a  /home/pietro/repos/pokemon_az/pkmn/libpkmn_showdown.a
-  OBJECT_DIR = CMakeFiles/mcts_analysis.dir
-  POST_BUILD = :
-  PRE_LINK = :
-  TARGET_FILE = mcts_analysis
-  TARGET_PDB = mcts_analysis.dbg
 
 # =============================================================================
 # Object build statements for EXECUTABLE target tester
@@ -196,7 +159,7 @@ build CMakeFiles/tester.dir/main.cpp.o: CXX_COMPILER__tester_unscanned_Release /
   CONFIG = Release
   DEFINES = -DUSE_C10D_GLOO -DUSE_DISTRIBUTED -DUSE_RPC -DUSE_TENSORPIPE
   DEP_FILE = CMakeFiles/tester.dir/main.cpp.o.d
-  FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20 -D_GLIBCXX_USE_CXX11_ABI=1 -fopenmp
+  FLAGS = -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use -std=gnu++20 -D_GLIBCXX_USE_CXX11_ABI=1 -fopenmp
   INCLUDES = -I/home/pietro/repos/pokemon_az -I/home/pietro/repos/pokemon_az/driver -I/home/pietro/repos/pokemon_az/driver/src -I/home/pietro/repos/pokemon_az/driver/src/gen1 -I/home/pietro/repos/pokemon_az/driver/src/gen1/data -I/home/pietro/repos/pokemon_az/driver/src/gen1/samplers -I/home/pietro/repos/pokemon_az/pkmn -I/home/pietro/libs/libtorch -I/home/pietro/repos/pokemon_az/pkmnaz -isystem /home/pietro/libs/libtorch/include -isystem /home/pietro/libs/libtorch/include/torch/csrc/api/include
   OBJECT_DIR = CMakeFiles/tester.dir
   OBJECT_FILE_DIR = CMakeFiles/tester.dir
@@ -212,7 +175,7 @@ build CMakeFiles/tester.dir/main.cpp.o: CXX_COMPILER__tester_unscanned_Release /
 build tester: CXX_EXECUTABLE_LINKER__tester_Release CMakeFiles/tester.dir/main.cpp.o | libpkmnaz.a libdriver.a /home/pietro/libs/libtorch/lib/libtorch.so /home/pietro/libs/libtorch/lib/libc10.so /home/pietro/libs/libtorch/lib/libc10.so /home/pietro/libs/libtorch/lib/libkineto.a /home/pietro/repos/pokemon_az/pkmn/libpkmn_showdown.a /usr/lib/libgomp.so /usr/lib/libpthread.a || libdriver.a libpkmnaz.a
   CONFIG = Release
   DEP_FILE = CMakeFiles/tester.dir/link.d
-  FLAGS = -O3 -march=native -mtune=native -flto -fuse-linker-plugin -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
+  FLAGS = -O3 -DNDEBUG -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use
   LINK_FLAGS = -no-pie -Wl,--dependency-file=CMakeFiles/tester.dir/link.d
   LINK_LIBRARIES = -Wl,-rpath,/lib/intel64:/lib/intel64_win:/lib/win-x64:/home/pietro/libs/libtorch/lib  libpkmnaz.a  libdriver.a  /home/pietro/libs/libtorch/lib/libtorch.so  -Wl,--no-as-needed,"/home/pietro/libs/libtorch/lib/libtorch_cpu.so" -Wl,--as-needed  /home/pietro/libs/libtorch/lib/libc10.so  -Wl,--no-as-needed,"/home/pietro/libs/libtorch/lib/libtorch.so" -Wl,--as-needed  /home/pietro/libs/libtorch/lib/libc10.so  /home/pietro/libs/libtorch/lib/libkineto.a  /home/pietro/repos/pokemon_az/pkmn/libpkmn_showdown.a  /usr/lib/libgomp.so  /usr/lib/libpthread.a
   LINK_PATH = -L/lib/intel64   -L/lib/intel64_win   -L/lib/win-x64
@@ -227,7 +190,7 @@ build tester: CXX_EXECUTABLE_LINKER__tester_Release CMakeFiles/tester.dir/main.c
 # Utility command for edit_cache
 
 build CMakeFiles/edit_cache.util: CUSTOM_COMMAND
-  COMMAND = cd /home/pietro/repos/pokemon_az/out/build/linux-release && /usr/bin/cmake-gui -S/home/pietro/repos/pokemon_az -B/home/pietro/repos/pokemon_az/out/build/linux-release
+  COMMAND = cd /home/pietro/repos/pokemon_az/out/build/linux-release && /usr/bin/ccmake -S/home/pietro/repos/pokemon_az -B/home/pietro/repos/pokemon_az/out/build/linux-release
   DESC = Running CMake cache editor...
   pool = console
   restat = 1
@@ -261,7 +224,7 @@ build pkmnaz: phony libpkmnaz.a
 #############################################
 # Folder: /home/pietro/repos/pokemon_az/out/build/linux-release
 
-build all: phony libdriver.a example libpkmnaz.a mcts_analysis tester
+build all: phony libdriver.a example libpkmnaz.a tester
 
 # =============================================================================
 # Built-in targets

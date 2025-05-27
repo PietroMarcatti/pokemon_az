@@ -1,10 +1,8 @@
 #pragma once
 #include "species.hpp"
 #include "moves.hpp"
-#include "rangeview.hpp"
 #include "gen1battle.hpp"
 #include <array>
-#include <vector>
 #include <functional>
 #include <iostream>
 

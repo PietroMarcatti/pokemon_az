@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXE_LINKER_FLAGS "-no-pie")
 
 set(LIBTORCH_PATH "~/libs/libtorch")
-set(PKMN_LIB "${PROJECT_SOURCE_DIR}/pkmn/libpkmn_showdown.a")    # Linux .a
+set(PKMN_LIB "${PROJECT_SOURCE_DIR}/engine/libpkmn_showdown.a")
 
 # Torch setup
 set(CMAKE_PREFIX_PATH "${LIBTORCH_PATH}")
@@ -24,13 +24,13 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/driver/src/gen1
     ${PROJECT_SOURCE_DIR}/driver/src/gen1/data
     ${PROJECT_SOURCE_DIR}/driver/src/gen1/samplers
-    ${PROJECT_SOURCE_DIR}/pkmn
+    ${PROJECT_SOURCE_DIR}/engine
     ${LIBTORCH_PATH}
     ${PROJECT_SOURCE_DIR}/pkmnaz
 )
 
 # Compiler flags
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -march=native -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use")
 
 # Libraries and targets
@@ -46,9 +46,6 @@ target_link_libraries(pkmnaz
     PUBLIC ${PKMN_LIB}
     PUBLIC OpenMP::OpenMP_CXX
 )
-
-add_executable(mcts_analysis mcts_test.cpp)
-target_link_libraries(mcts_analysis PUBLIC driver PUBLIC ${PKMN_LIB})
 
 add_executable(tester main.cpp)
 target_link_libraries(tester PUBLIC pkmnaz)

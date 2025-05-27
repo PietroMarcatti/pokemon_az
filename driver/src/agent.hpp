@@ -1,3 +1,5 @@
+//Abstract agent definition. Currently not used
+
 #pragma once
 
 #include "generation.hpp"
