@@ -239,6 +239,7 @@ namespace pkmndriver {
                 float best_value = p1 ? -std::numeric_limits<float>::infinity() : std::numeric_limits<float>::infinity();
                 MCTSNode* best_child = nullptr;
                 for (const auto& [_, child] : node->children) {
+                    if(pkmn_result_type(node->result) != PKMN_RESULT_NONE) continue;
                     float eq_res = 0;
                     eq_res = fast_sqrt(log_cache[node->visits] / (child->visits + 1e-6f));
                     float uct_value = (child->wins / (child->visits + 1e-6)) + exploration_constant * eq_res;
@@ -252,6 +253,7 @@ namespace pkmndriver {
 
             MCTSNode* expand(MCTSNode* node) {
                 for (const auto& action_pair : node->actions) {
+                    //std::cout<<(int)action_pair.first<<"\t"<<(int)action_pair.second<<"\n";
                     if (!node->children.contains(action_pair)) {
                         pkmn_gen1_battle new_battle(node->battle);
                         pkmn_result res = pkmn_gen1_battle_update(&new_battle, action_pair.first, action_pair.second, nullptr);
@@ -274,12 +276,39 @@ namespace pkmndriver {
                     int t = 0;
                     while (!pkmn_result_type(temp_result)) {
                         int c1=0, c2=0;
-                        uint8_t p1_moves = pkmn_gen1_battle_choices(&temp_battle, PKMN_PLAYER_P1, pkmn_result_p1(temp_result), p1_choices, PKMN_CHOICES_SIZE);
-                        uint8_t p2_moves = pkmn_gen1_battle_choices(&temp_battle, PKMN_PLAYER_P2, pkmn_result_p2(temp_result), p2_choices, PKMN_CHOICES_SIZE);
+                        if (model && t<=10) {
+                            auto state_new = torch::tensor(extract_game_state(temp_battle,true), torch::kFloat32).unsqueeze(0);
+                            auto state_best = torch::tensor(extract_game_state(temp_battle,false), torch::kFloat32).unsqueeze(0);
 
-                        c1 = p1_choices[(uint64_t)((pkmn_psrng_next(&random) * (uint64_t)p1_moves) / 0x100000000)];
-                        c2 = p2_choices[(uint64_t)((pkmn_psrng_next(&random) * (uint64_t)p2_moves) / 0x100000000)];
-                        
+                            auto [logits_new, _1] = (*model)->forward(state_new);
+                            auto [logits_best, _2] = (*model)->forward(state_best);
+
+                            auto num_1 = pkmn_gen1_battle_choices(&temp_battle,PKMN_PLAYER_P1, pkmn_result_p1(temp_result),p1_choices,9);
+                            auto num_2 = pkmn_gen1_battle_choices(&temp_battle,PKMN_PLAYER_P2, pkmn_result_p2(temp_result),p2_choices,9);
+                            std::vector<int64_t> v1;
+                            for (int j = 0; j < num_1; ++j) {
+                                v1.push_back(choice_to_index(p1_choices[j]));
+                            }
+                            std::vector<int64_t> v2;
+                            for (int j = 0; j < num_2; ++j) {
+                                v2.push_back(choice_to_index(p2_choices[j]));
+                            }
+
+                            auto squeezed_logits_new = logits_new.squeeze(0);
+                            auto squeezed_logits_best = logits_best.squeeze(0);
+
+                            auto sampled_new = sample_from_logits(squeezed_logits_new, v1);
+                            auto sampled_best = sample_from_logits(squeezed_logits_best, v2);
+
+                            c1 = index_to_choice(sampled_new);
+                            c2 = index_to_choice(sampled_best);
+                        }else {
+                            uint8_t p1_moves = pkmn_gen1_battle_choices(&temp_battle, PKMN_PLAYER_P1, pkmn_result_p1(temp_result), p1_choices, PKMN_CHOICES_SIZE);
+                            uint8_t p2_moves = pkmn_gen1_battle_choices(&temp_battle, PKMN_PLAYER_P2, pkmn_result_p2(temp_result), p2_choices, PKMN_CHOICES_SIZE);
+
+                            c1 = p1_choices[(uint64_t)((pkmn_psrng_next(&random) * (uint64_t)p1_moves) / 0x100000000)];
+                            c2 = p2_choices[(uint64_t)((pkmn_psrng_next(&random) * (uint64_t)p2_moves) / 0x100000000)];
+                        }
                         t++;
                         temp_result = pkmn_gen1_battle_update(&temp_battle, c1, c2, nullptr);
                     }

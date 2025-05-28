@@ -1,18 +1,16 @@
 #include "pkmn.h"
 #include "pkmnaz/train.hpp"
 #include <omp.h>
+#include <chrono>
 
 using namespace pkmndriver::Gen1;
 
 int main() {
-	const auto& sets = gen1RandBatsSets;
 	MCTS::initialize_log_cache();
 
-	
 	int wins_counter = 0;
     int loss_counter = 0;
     int draws_counter = 0;
-	omp_set_num_threads(10);
 	
 	
 	PokemonAZNet model(1372, 11);
@@ -26,8 +24,8 @@ int main() {
 	if (std::filesystem::exists("checkpoints/best.pt")) torch::load(best_model, "checkpoints/best.pt");
 	else std::cout << "No best checkpoint found, starting fresh.\n";
 
-	//test_against_mcts(model, sim_games);
 
+	omp_set_num_threads(10);
 	for (int iteration = 0; iteration < 1000; ++iteration) {
 		std::cout << "Iteration " << iteration + 1 << "\n";
 		auto start = std::chrono::high_resolution_clock::now();

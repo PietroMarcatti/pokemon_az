@@ -51,7 +51,7 @@ std::vector<pkmn_choice> pkmn_choices = { 0, 1, 10, 14, 18, 22, 26, 5, 9, 13, 17
 
 std::pair<std::vector<std::tuple<std::vector<float>, std::vector<float>, int>>,int> self_play_game(int game_index, PokemonAZNet* model=nullptr) {
 	Gen1Battle battle = generateRandomBattle(game_index);
-	MCTS mcts;
+	MCTS mcts=MCTS();
 	battle.init();
 	battle.play_turn(0, 0);
 

@@ -30,7 +30,7 @@ include_directories(
 )
 
 # Compiler flags
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -march=native -O0")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -march=native -O1")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DNDEBUG -march=native -O3 -flto -fomit-frame-pointer -funroll-loops -fprofile-use")
 
 # Libraries and targets
