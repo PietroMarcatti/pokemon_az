@@ -129,7 +129,7 @@ void train_model(PokemonAZNet& model,
 
 			// 3. Debug: Print log_softmax output (should NOT have -1e9)
 			auto [policy_loss, value_loss] = loss_fn(policy_log_probs, policy_target_batch, value_pred, value_target_batch);
-			auto loss = policy_loss+0.5*value_loss;
+			auto loss = policy_loss+value_loss;
 			loss.backward();
 			optimizer.step();
 
@@ -173,22 +173,36 @@ bool evaluate_models(PokemonAZNet& new_model, PokemonAZNet& best_model, int num_
 		battle.init();
 		battle.play_turn(0, 0);
 		pkmn_choice choices1[9], choices2[9];
-		int turn = 0;
-		while (!pkmn_result_type(battle.result)) {
-			auto c1 = model_choose_move(battle, new_model, PKMN_PLAYER_P1);
-			auto c2 = model_choose_move(battle, best_model, PKMN_PLAYER_P2);
-			battle.play_turn(c1, c2);
-		}
+		if(i%2==0){
+			while (!pkmn_result_type(battle.result)) {
+				auto c1 = model_choose_move(battle, new_model, PKMN_PLAYER_P1);
+				auto c2 = model_choose_move(battle, best_model, PKMN_PLAYER_P2);
+				battle.play_turn(c1, c2);
+			}
 
-		switch (battle.result) {
-		case 1: new_wins++; break;
-		case 2: best_wins++; break;
-		default: draws++;
+			switch (battle.result) {
+			case 1: new_wins++; break;
+			case 2: best_wins++; break;
+			default: draws++;
+			}
+		}else{
+			while (!pkmn_result_type(battle.result)) {
+				auto c1 = model_choose_move(battle, best_model, PKMN_PLAYER_P1);
+				auto c2 = model_choose_move(battle, new_model, PKMN_PLAYER_P2);
+				battle.play_turn(c1, c2);
+			}
+
+			switch (battle.result) {
+			case 1: best_wins++; break;
+			case 2: new_wins++; break;
+			default: draws++;
+			}
 		}
+		
 	}
 
 	std::cout << "New: " << new_wins << ", Best: " << best_wins << ", Draws: " << draws << "\n";
-	return new_wins > best_wins*1.2f;
+	return new_wins >= best_wins*1.22f;
 }
 
 float model_vs_random(PokemonAZNet& model, int num_games = 100) {
@@ -200,43 +214,42 @@ float model_vs_random(PokemonAZNet& model, int num_games = 100) {
 		battle.play_turn(0, 0);
 		pkmn_choice choices1[9], choices2[9];
 
-		while (!pkmn_result_type(battle.result)) {
-			pkmn_choice c1 = model_choose_move(battle,model,PKMN_PLAYER_P1);
-			uint8_t num_1 = battle.get_choices_p1(choices1);
-			uint8_t num_2 = battle.get_choices_p2(choices2);
-			pkmn_choice c2 = choices2[(uint64_t)pkmn_psrng_next(&battle.random) * num_2 / 0x100000000];
-			
-			bool found1=false, found2=false;
-			for (int j=0; j<num_1 && !found1; j++) {
-				found1= choices1[j] == c1;
+		if(i%2==0){
+			while (!pkmn_result_type(battle.result)) {
+				auto c1 = model_choose_move(battle, model, PKMN_PLAYER_P1);
+				uint8_t num_2 = battle.get_choices_p2(choices2);
+				pkmn_choice c2 = choices2[(uint64_t)pkmn_psrng_next(&battle.random) * num_2 / 0x100000000];
+				
+				battle.play_turn(c1, c2);
 			}
-			for (int j=0; j<num_2 && !found2; j++) {
-				found2= choices2[j] == c2;
+
+			switch (battle.result) {
+			case 1: new_wins++; break;
+			case 2: best_wins++; break;
+			default: draws++;
 			}
-			if (!found1 && !found2) {
-				std::cout<<"Player 1 valid moves were: \n";
-				for (int j=0; j<num_1; j++) {
-					std::cout<<choices1[j]<<" ";
-				}
-				std::cout<<std::endl<<"Selected move: "<<c1<<"\n";
-				std::cout<<"Player 2 valid moves were: \n";
-				for (int j=0; j<num_2; j++) {
-					std::cout<<choices2[j]<<" ";
-				}
-				std::cout<<"\nSelected move: "<<c2<<std::endl;
+		}else{
+			while (!pkmn_result_type(battle.result)) {
+				uint8_t num_1 = battle.get_choices_p1(choices1);
+				pkmn_choice c1 = choices1[(uint64_t)pkmn_psrng_next(&battle.random) * num_1 / 0x100000000];
+				auto c2 = model_choose_move(battle, model, PKMN_PLAYER_P2);
+				
+				battle.play_turn(c1, c2);
 			}
-			battle.play_turn(c1, c2);
-		}
-		switch (battle.result) {
-		case 1: new_wins++; break;
-		case 2: best_wins++; break;
-		default: draws++;
+
+			switch (battle.result) {
+			case 1: best_wins++; break;
+			case 2: new_wins++; break;
+			default: draws++;
+			}
 		}
 	}
 
 	std::cout << "Model: " << new_wins << ", Random: " << best_wins << ", Draws: " << draws << "\n";
 	return static_cast<float>(new_wins) / num_games;
 }
+
+
 
 void model_vs_mcts(PokemonAZNet& model, int num_games = 100) {
 	model->eval();
@@ -250,19 +263,39 @@ void model_vs_mcts(PokemonAZNet& model, int num_games = 100) {
 		battle.play_turn(0, 0);
 		pkmn_choice choices1[9], choices2[9];
 
-		while (!pkmn_result_type(battle.result)) {
-			pkmn_choice c1 = model_choose_move(battle, model, PKMN_PLAYER_P1);
+		if(i%2==0){
+			while (!pkmn_result_type(battle.result)) {
+				auto c1 = model_choose_move(battle, model, PKMN_PLAYER_P1);
+				auto num_2 = battle.get_choices_p2(choices2);
+				std::vector<float> c2_weights = mcts.get_action_distribution(battle, false);
+				std::discrete_distribution<> c2_dist(c2_weights.begin(), c2_weights.end());
+				auto c2 = index_to_choice(c2_dist(MCTSNode::rd));
+				
+				battle.play_turn(c1, c2);
+			}
 
-			auto num_2 = battle.get_choices_p2(choices2);
-			std::vector<float> c2_weights = mcts.get_action_distribution(battle, false);
-			std::discrete_distribution<> c1_dist(c2_weights.begin(), c2_weights.end());
-			auto c2 = index_to_choice(c1_dist(MCTSNode::rd));
-			battle.play_turn(c1, c2);
-		}
-		switch (battle.result) {
-		case 1: new_wins++; break;
-		case 2: best_wins++; break;
-		default: draws++;
+			switch (battle.result) {
+				case 1: new_wins++; break;
+				case 2: best_wins++; break;
+				default: draws++;
+			}
+		}else{
+			while (!pkmn_result_type(battle.result)) {
+				
+				auto num_1 = battle.get_choices_p1(choices1);
+				std::vector<float> c1_weights = mcts.get_action_distribution(battle, true);
+				std::discrete_distribution<> c1_dist(c1_weights.begin(), c1_weights.end());
+				auto c1 = index_to_choice(c1_dist(MCTSNode::rd));
+				auto c2 = model_choose_move(battle, model, PKMN_PLAYER_P2);
+				
+				battle.play_turn(c1, c2);
+			}
+
+			switch (battle.result) {
+			case 1: best_wins++; break;
+			case 2: new_wins++; break;
+			default: draws++;
+			}
 		}
 	}
 

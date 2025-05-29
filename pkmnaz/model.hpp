@@ -1,5 +1,4 @@
 #include <torch/torch.h>
-#include <filesystem>
 #include "pkmndriver.hpp"
 
 using namespace pkmndriver::Gen1;

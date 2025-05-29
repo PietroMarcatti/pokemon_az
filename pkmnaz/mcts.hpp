@@ -124,6 +124,7 @@ namespace pkmndriver {
             float exploration_constant;
             int t;
             uint8_t sim_num;
+            std::pair<RevealedSideMask, RevealedSideMask> masks;
 
             MCTS() :root(nullptr), random() {
                 iterations = 2000;
@@ -141,6 +142,7 @@ namespace pkmndriver {
 
             std::vector<float> get_action_distribution(const Gen1Battle& battle, bool p1, PokemonAZNet* model=nullptr) {
                 t = *std::bit_cast<uint16_t*>(battle.battle_.bytes + 368);
+                masks = battle.masks;
                 random = battle.random;
                 root = std::make_unique<MCTSNode>(battle.battle_, battle.result);
                 /*
@@ -253,7 +255,7 @@ namespace pkmndriver {
 
             MCTSNode* expand(MCTSNode* node) {
                 for (const auto& action_pair : node->actions) {
-                    //std::cout<<(int)action_pair.first<<"\t"<<(int)action_pair.second<<"\n";
+                    if(pkmn_result_type(node->result) != PKMN_RESULT_NONE) continue;
                     if (!node->children.contains(action_pair)) {
                         pkmn_gen1_battle new_battle(node->battle);
                         pkmn_result res = pkmn_gen1_battle_update(&new_battle, action_pair.first, action_pair.second, nullptr);

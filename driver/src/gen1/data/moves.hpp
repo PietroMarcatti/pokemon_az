@@ -619,7 +619,7 @@ namespace pkmndriver {
         }
         constexpr MoveData::MoveData move_data(Move move) {
             assert(move != Move::NullMove);
-            return MoveData::DATA[move];
+            return MoveData::DATA[move-1];
         }
 	}
 }

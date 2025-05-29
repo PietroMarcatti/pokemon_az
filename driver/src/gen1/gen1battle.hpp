@@ -82,13 +82,13 @@ namespace pkmndriver {
             SUB_SLICE(pokemon6, 120, 144)
 
             inline Slice pokemon(Slice& team, uint8_t p_num) {
-            switch (p_num) {
-            case 0: return pokemon1(team);
-            case 1: return pokemon2(team);
-            case 2: return pokemon3(team);
-            case 3: return pokemon4(team);
-            case 4: return pokemon5(team);
-            case 5: return pokemon6(team);
+                switch (p_num) {
+                case 0: return pokemon1(team);
+                case 1: return pokemon2(team);
+                case 2: return pokemon3(team);
+                case 3: return pokemon4(team);
+                case 4: return pokemon5(team);
+                case 5: return pokemon6(team);
                 default: return pokemon1(team);
             }
         }
@@ -430,6 +430,7 @@ namespace pkmndriver {
             pkmn_result result = PKMN_RESULT_NONE;
             std::pair<pkmn_choice, pkmn_choice> last_moves{};
             pkmn_gen1_battle_options options = pkmn_gen1_battle_options();
+            std::pair<RevealedSideMask,RevealedSideMask> masks; //First: what player 1 has revealed, Second: what player 2 has revealed
 
             ~Battle() = default;
             Battle() = default;
@@ -529,8 +530,8 @@ namespace pkmndriver {
             }
 
             pkmn_result play_turn(pkmn_choice choice_p1, pkmn_choice choice_p2) {
-                //update_revealed_info(choice_p1,true);
-                //update_revealed_info(choice_p2, false);
+                update_revealed_info(choice_p1, true);
+                update_revealed_info(choice_p2, false);
                 last_moves = { choice_p1, choice_p2 };
                 this->result = pkmn_gen1_battle_update(&battle_, choice_p1, choice_p2, &options);
                 pkmn_gen1_battle_options_set(&options, NULL, NULL, NULL);
@@ -558,11 +559,9 @@ namespace pkmndriver {
                 print_battle_result(this->battle_, this->result);
             }
 
-
-            /*
-            void update_revealed_info(pkmn_choice choice, const bool& p) {
-                RevealedSideMask& mask = p ? revealed_masks.first : revealed_masks.second;
-                uint8_t* ord = battle_.bytes + !p * 184 + 176;
+            void update_revealed_info(pkmn_choice choice, const bool& p1) {
+                RevealedSideMask& mask = p1 ? masks.first : masks.second;
+                uint8_t* ord = battle_.bytes + !p1 * 184 + 176;
                 uint8_t pos = static_cast<uint8_t>(ord[0]-1);
                 mask.pokemon_masks[pos].species = true;
                 uint8_t switch_pos;
@@ -573,12 +572,11 @@ namespace pkmndriver {
                         case 13: mask.pokemon_masks[pos].moves[2] = true; break;
                         case 17: mask.pokemon_masks[pos].moves[3] = true; break;
                         case 10: case 14: case 18: case 22: case 26:
-                            switch_pos = ord[(choice>>2)-1]-1;
+                            switch_pos = ord[(choice>>2)-1];
                             mask.pokemon_masks[switch_pos].species = true; break;
                     }
                 }
-            }*/
-
+            }
 
         };
         using Gen1Battle = Battle<Gen::RBY>;
