@@ -110,6 +110,7 @@ int main() {
     int draws_counter = 0;
 
 	std::array<std::tuple<int, int, int, int, int>,151> stats;
+	std::array<double, 5> average_stats{0.0,0.0,0.0,0.0,0.0};
 
 	for(int i = 0; i<1000; i++){
 		Gen1Battle battle = generateRandomBattle(i);
@@ -131,8 +132,14 @@ int main() {
 		}
 	}
 	for(int i = 0; i<stats.size();i++){
-		std::cout<<"{"<<i+1<<",{"<<std::get<0>(stats[i])<<","<<std::get<1>(stats[i])<<","<<std::get<2>(stats[i])<<","<<std::get<3>(stats[i])<<","<<std::get<4>(stats[i])<<"}}\n";
+		average_stats[0]+=static_cast<double>(std::get<0>(stats[i]))/(stats.size()-5);
+		average_stats[1]+=static_cast<double>(std::get<1>(stats[i]))/(stats.size()-5);
+		average_stats[2]+=static_cast<double>(std::get<2>(stats[i]))/(stats.size()-5);
+		average_stats[3]+=static_cast<double>(std::get<3>(stats[i]))/(stats.size()-5);
+		average_stats[4]+=static_cast<double>(std::get<4>(stats[i]))/(stats.size()-5);
+		
 	}
+	std::cout<<"{"<<average_stats[0]<<","<<average_stats[1]<<","<<average_stats[2]<<","<<average_stats[3]<<","<<average_stats[4]<<"}\n";
 
 	std::array<int,15> type_dist{0};
 	for(int i = 1; i<=151;i++){

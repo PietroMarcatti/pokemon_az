@@ -43,7 +43,7 @@ async def main():
     second_player = RandomPlayer(battle_format="gen1randombattle")
     test_player = AlphaZeroPlayer()
 
-    await random_player.battle_against(second_player, n_battles=1)
+    await random_player.battle_against(second_player, n_battles=50)
 
     print(
         f"Player {random_player.username} won {random_player.n_won_battles} out of {random_player.n_finished_battles} played"

@@ -1,0 +1,2 @@
+/usr/bin/ar qc libpkmnaz.a CMakeFiles/pkmnaz.dir/pkmnaz/model.cpp.o
+/usr/bin/ranlib libpkmnaz.a

@@ -1,3 +1,5 @@
+#include "gen1battle.hpp"
+#include "pkmn.h"
 #include "pkmndriver.hpp"
 
 using namespace pkmndriver::Gen1;
@@ -10,7 +12,7 @@ std::map<std::string,int> game_state_sizes = {
     {"pokemon",96},
     {"side",686},
     {"inactives",576},
-}
+};
 
 inline std::vector<double> decode_status(uint8_t num) {
     std::vector<double> result(7, 0.0);
@@ -328,7 +330,75 @@ std::array<std::tuple<int,int,int,int,int>> stats = {
     {253,139,168,216,245},
     {261,175,192,192,192}
 }
-
+std::array<double> avg_stats = {261.952,167.39,185.158,186.322,186.493};
 std::array<float,15> pkmn_type_prior = {0.171233, 0.0547945, 0.116438, 0.205479, 0.0958904, 0.0753425, 0.0547945, 0.0205479, 0.0821918, 0.212329, 0.0890411, 0.0616438, 0.0958904, 0.0342466, 0.0205479};
 std::array<float,15> move_type_prior = {0.275918, 0.0386297, 0.0115571, 0.00505744, 0.0357183, 0.0243307, 0.00184172, 0.00752401, 0.0221401, 0.0469237, 0.0611026, 0.0760208, 0.0869736, 0.0624314, 0};
 float move_bp_prior = 0,3350625;
+
+inline void extract_imperfect_pokemon_state(pkmn_gen1_battle& battle_, std::vector<float>& game_state, pkmn_player player, uint8_t p_num, int offset,std::pair<RevealedSideMask,RevealedSideMask>& masks) {
+	RevealedSideMask& m = player== PKMN_PLAYER_P1 ? masks.first : masks.second;
+    RangeView<uint8_t*> team = player == PKMN_PLAYER_P1 ? side1(battle_) : side2(battle_);
+	RangeView<uint8_t*> p = pokemon(team, p_num);
+    bool known_species = m.pokemon_masks[p_num].species;
+    if(known_species){
+
+    }else{
+        std::array<double,5> removed_avg_stats = {0,0,0,0,0};
+        int known_pkmn = 0;
+        for(int i = 0; i<6; i++){
+            if(m.pokemon_masks[i].species){
+                int p_idx = species(p);
+                known_pkmn++;
+                std::tuple<int, int, int, int, int> p_stats = stats[p_idx];
+                removed_avg_stats[0]+= std::get<0>(p_stats);
+                removed_avg_stats[1]+= std::get<1>(p_stats);
+                removed_avg_stats[2]+= std::get<2>(p_stats);
+                removed_avg_stats[3]+= std::get<3>(p_stats);
+                removed_avg_stats[4]+= std::get<4>(p_stats);
+            }
+        }
+        removed_avg_stats[0]/=static_cast<double>(known_pkmn);
+        removed_avg_stats[1]/=static_cast<double>(known_pkmn);
+        removed_avg_stats[2]/=static_cast<double>(known_pkmn);
+        removed_avg_stats[3]/=static_cast<double>(known_pkmn);
+        removed_avg_stats[4]/=static_cast<double>(known_pkmn);
+    }
+    
+    
+    
+	game_state[offset] = static_cast<double>(current_hp(p)) / hitpoints(p);
+    game_state[offset + 1] = static_cast<double>(hitpoints(p))/481; //Normalization by the maximum value of the stat
+	game_state[offset + 2] = static_cast<double>(attack(p)) / 274; 
+	game_state[offset + 3] = static_cast<double>(defense(p)) / 335;
+	game_state[offset + 4] = static_cast<double>(speed(p)) / 288;
+	game_state[offset + 5] = static_cast<double>(special(p)) / 259;
+	std::vector<double> move_type(15);
+	move_type[move_data(move_1_id(p)).type] = 1;
+	std::ranges::copy(move_type, game_state.begin() + offset + 6);
+	game_state[offset + 21] = move_1_pp(p) > 0;
+	game_state[offset + 22] = move_data(move_1_id(p)).bp/130.0;
+	move_type[move_data(move_1_id(p)).type] = 0;
+	move_type[move_data(move_2_id(p)).type] = 1;
+	std::ranges::copy(move_type, game_state.begin() + offset + 23);
+	game_state[offset + 38] = move_2_pp(p) > 0;
+	game_state[offset + 39] = move_data(move_2_id(p)).bp/130.0;
+	move_type[move_data(move_2_id(p)).type] = 0;
+	move_type[move_data(move_3_id(p)).type] = 1;
+	std::ranges::copy(move_type, game_state.begin() + offset + 40);
+	game_state[offset + 55] = move_3_pp(p) > 0;
+	game_state[offset + 56] = move_data(move_3_id(p)).bp/130.0;
+	move_type[move_data(move_3_id(p)).type] = 0;
+	move_type[move_data(move_4_id(p)).type] = 1;
+	std::ranges::copy(move_type, game_state.begin() + offset + 57);
+	game_state[offset + 72] = move_4_pp(p) > 0;
+	game_state[offset + 73] = move_data(move_4_id(p)).bp/130.0;
+
+	std::vector<double> st = decode_status((int)status(p));
+	std::ranges::copy(st, game_state.begin() + offset + 74);
+
+	move_type[move_data(move_4_id(p)).type] = 0;
+	std::array<uint8_t, 2> types = get_type(species(p));
+	move_type[types[0]] = 1;
+	move_type[types[1]] = 1;
+	std::ranges::copy(move_type, game_state.begin() + offset + 81);
+}
